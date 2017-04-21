@@ -83,10 +83,22 @@ class ContVecReader(InputReader):
     self.vocab = Vocab()
 
   def read_file(self, filename):
-    npzFile = np.load(filename)
-    sentences = map(lambda f:ArraySentence(npzFile[f]), npzFile.files)
-    npzFile.close()
-    return sentences
+    if filename.endswith(".npz"):
+      print "npz"
+      npzFile = np.load(filename)
+      sentences = map(lambda f:ArraySentence(npzFile[f]), npzFile.files)
+      npzFile.close()
+      return sentences
+    else:
+      print "txt"
+      sentences = []
+      with open(filename) as f:
+        for line in f:
+          words = line.strip().split(";")
+#          sentence = ArraySentence(np.asarray([map(lambda x: float(x), word.split()) for word in words]))
+          sentence = SimpleSentence([np.asarray([float(x) for x in word.split()]) for word in words])
+          sentences.append(sentence)
+      return sentences
 
   def freeze(self):
     pass
