@@ -94,14 +94,12 @@ class ContVecReader(InputReader):
 
   def read_file(self, filename):
     if filename.endswith(".npz"):
-      print "npz"
       npzFile = np.load(filename)
       npzKeys = sorted(npzFile.files, key=lambda x: int(x.split('_')[1]))
       sentences = map(lambda f:ArraySentence(npzFile[f]), npzKeys)
       npzFile.close()
       return sentences
     else:
-      print "txt"
       sentences = []
       with open(filename) as f:
         for line in f:
