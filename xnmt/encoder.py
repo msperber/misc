@@ -3,6 +3,7 @@ from batcher import *
 import residual
 import pyramidal
 import conv_encoder
+import lstm
 
 class Encoder:
   '''
@@ -66,5 +67,14 @@ class ConvBiLSTMEncoder(DefaultEncoder):
     self.embedder = embedder
     input_dim = embedder.emb_dim
     self.encoder = conv_encoder.ConvBiRNNBuilder(layers, input_dim, output_dim, model, dy.LSTMBuilder)
+    self.serialize_params = [layers, output_dim, embedder, model]
+
+class AudioEncoder(DefaultEncoder):
+
+  def __init__(self, layers, output_dim, embedder, model):
+    self.embedder = embedder
+    input_dim = embedder.emb_dim
+#    self.encoder = pyramidal.PyramidalRNNBuilder(layers, input_dim, output_dim, model, lstm.PythonLSTMBuilder)
+    self.encoder = pyramidal.PyramidalRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder)
     self.serialize_params = [layers, output_dim, embedder, model]
 

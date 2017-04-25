@@ -75,6 +75,8 @@ class XnmtTrainer:
       self.encoder_builder = PyramidalBiLSTMEncoder
     elif encoder_type == "ConvBiLSTM".lower():
       self.encoder_builder = ConvBiLSTMEncoder
+    elif encoder_type == "Audio".lower():
+      self.encoder_builder = AudioEncoder
     else:
       raise RuntimeError("Unkonwn encoder type {}".format(encoder_type))
 
