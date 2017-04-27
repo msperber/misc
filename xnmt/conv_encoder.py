@@ -89,3 +89,81 @@ class ConvBiRNNBuilder(object):
 
   def initial_state(self):
     return PseudoState(self)
+
+
+class StridedConvEncBuilder(object):
+  """
+  Implements several CNN layers, each with stride (2,2), resulting in downsampling by 2**(num_layers-1) in both dimensions.
+  """
+  
+  def __init__(self, num_layers, input_dim, model, chn_dim=3, num_filters=32):
+    """
+    :param num_layers: encoder depth
+    :param input_dim: size of the inputs, before factoring out the channels.
+                      We will end up with a convolutional layer of size num_steps X input_dim/chn_dim X chn_dim 
+    :param model
+    :param chn_dim: channel dimension
+    :param num_filters
+    """
+    assert num_layers > 0
+    assert input_dim % chn_dim == 0
+    
+    self.num_layers = num_layers
+    self.chn_dim = chn_dim
+    self.freq_dim = input_dim / chn_dim
+    self.num_filters = num_filters
+    self.filter_size_time = 3
+    self.filter_size_freq = 3
+    self.stride = (2,2)
+    
+    normalInit=dy.NormalInitializer(0, 0.1)
+    self.filters_layers = []
+    for layer_i in range(num_layers):
+      filters = model.add_parameters(dim=(self.filter_size_time,
+                                          self.filter_size_freq,
+                                          self.chn_dim if layer_i==0 else self.num_filters,
+                                          self.num_filters),
+                                     init=normalInit)
+      self.filters_layers.append(filters)
+  
+  def get_output_dim(self):
+    conv_dim = self.freq_dim
+    for _ in range(self.num_layers):
+      conv_dim = int(math.ceil(float(conv_dim - self.filter_size_freq + 1) / float(self.stride[1])))
+    return conv_dim * self.num_filters
+  
+  def get_output_len(self, input_len):
+    conv_dim = input_len
+    for _ in range(self.num_layers):
+      conv_dim = int(math.ceil(float(conv_dim - self.filter_size_time + 1) / float(self.stride[0])))
+    return conv_dim
+
+  def whoami(self): return "StridedConvEncBuilder"
+
+  def set_dropout(self, p):
+    if p>0.0: raise NotImplementedError("StridedConvEncBuilder does not support dropout")
+  def disable_dropout(self):
+    pass
+
+  def transduce(self, es):
+    es_expr = es.as_tensor()
+
+    sent_len = es_expr.dim()[0][0]
+    batch_size=es_expr.dim()[1]
+    
+    # convolutions won't work if sentence length is too short; pad if necessary
+    pad_size = 0
+    while self.get_output_len(sent_len + pad_size) < self.filter_size_time:
+      pad_size += 1
+    if pad_size>0:
+      es_expr = dy.concatenate([es_expr, dy.zeroes((pad_size, self.freq_dim * self.chn_dim), batch_size=es_expr.dim()[1])])
+      sent_len += pad_size
+
+    # convolution layers    
+    es_chn = dy.reshape(es_expr, (sent_len, self.freq_dim, self.chn_dim), batch_size=batch_size)
+    cnn_layer = es_chn
+    for filters in self.filters_layers:
+      cnn_layer = dy.conv2d(cnn_layer, dy.parameter(filters), stride=self.stride, is_valid=True)
+    cnn_out = dy.reshape(cnn_layer, (cnn_layer.dim()[0][0], cnn_layer.dim()[0][1]*cnn_layer.dim()[0][2]), batch_size=batch_size)
+    es_list = [cnn_out[i] for i in range(cnn_out.dim()[0][0])]
+    return es_list

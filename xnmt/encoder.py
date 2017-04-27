@@ -35,9 +35,10 @@ class Encoder:
       return AudioEncoder(encoder_layers, encoder_hidden_dim, input_embedder, model)
     elif spec_lower == "modular":
       # example for a modular encoder: stacked pyramidal encoder, followed by stacked LSTM 
+      stridedConv = StridedConvEncoder(encoder_layers, input_embedder, model)
       return ModularEncoder([
-                             PyramidalBiLSTMEncoder(encoder_layers, encoder_hidden_dim, input_embedder, model),
-                             BiLSTMEncoder(encoder_layers, encoder_hidden_dim, NoopEmbedder(encoder_hidden_dim, model), model),
+                             stridedConv,
+                             BiLSTMEncoder(encoder_layers, encoder_hidden_dim, NoopEmbedder(stridedConv.encoder.get_output_dim(), model), model),
                              ],
                             model
                             )
@@ -93,8 +94,16 @@ class ConvBiLSTMEncoder(DefaultEncoder):
   def __init__(self, layers, output_dim, embedder, model):
     self.embedder = embedder
     input_dim = embedder.emb_dim
-    self.encoder = conv_encoder.ConvBiRNNBuilder(layers, input_dim, output_dim, model, dy.LSTMBuilder)
+    self.encoder = conv_encoder.ConvBiRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder)
     self.serialize_params = [layers, output_dim, embedder, model]
+
+class StridedConvEncoder(DefaultEncoder):
+
+  def __init__(self, layers, embedder, model):
+    self.embedder = embedder
+    input_dim = embedder.emb_dim
+    self.encoder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model)
+    self.serialize_params = [layers, embedder, model]
 
 class AudioEncoder(DefaultEncoder):
 
