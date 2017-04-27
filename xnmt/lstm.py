@@ -67,12 +67,26 @@ class ConvLSTMBuilder:
     self.filter_size_freq = 3
     normalInit=dy.NormalInitializer(0, 0.1)
 
-    # [i; f; o; g]
-    self.p_x2i = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters * 4),
+    self.p_x2i = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters),
                                          init=normalInit)
-    self.p_h2i = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters * 4),
+    self.p_x2f = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters),
                                          init=normalInit)
-    self.p_bi  = model.add_parameters(dim=(self.num_filters*4,), init=dy.ConstInitializer(0.0))
+    self.p_x2o = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters),
+                                         init=normalInit)
+    self.p_x2g = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters),
+                                         init=normalInit)
+    self.p_h2i = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters),
+                                         init=normalInit)
+    self.p_h2f = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters),
+                                         init=normalInit)
+    self.p_h2o = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters),
+                                         init=normalInit)
+    self.p_h2g = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters),
+                                         init=normalInit)
+    self.p_bi  = model.add_parameters(dim=(self.num_filters,), init=normalInit)
+    self.p_bf  = model.add_parameters(dim=(self.num_filters,), init=dy.ConstInitializer(1.0))
+    self.p_bo  = model.add_parameters(dim=(self.num_filters,), init=normalInit)
+    self.p_bg  = model.add_parameters(dim=(self.num_filters,), init=normalInit)
 
 
     
@@ -93,24 +107,31 @@ class ConvLSTMBuilder:
     
     es_chn = dy.reshape(es_expr, (sent_len, self.freq_dim, self.chn_dim), batch_size=batch_size) # ((276, 80, 3), 1)
 
-    i_x2i = dy.parameter(self.p_x2i)
-    i_h2i = dy.parameter(self.p_h2i)
-    i_bi = dy.parameter(self.p_bi)
-    
-    x_filtered = dy.conv2d_bias(es_chn, dy.parameter(self.p_x2i), dy.parameter(self.p_bi), stride=(1,1), is_valid=False)
-    xs = [dy.pick(x_filtered, i) for i in range(x_filtered.dim()[0][0])]
+    x_filtered_i = dy.conv2d_bias(es_chn, dy.parameter(self.p_x2i), dy.parameter(self.p_bi), stride=(1,1), is_valid=False)
+    x_filtered_f = dy.conv2d_bias(es_chn, dy.parameter(self.p_x2f), dy.parameter(self.p_bf), stride=(1,1), is_valid=False)
+    x_filtered_o = dy.conv2d_bias(es_chn, dy.parameter(self.p_x2o), dy.parameter(self.p_bo), stride=(1,1), is_valid=False)
+    x_filtered_g = dy.conv2d_bias(es_chn, dy.parameter(self.p_x2g), dy.parameter(self.p_bg), stride=(1,1), is_valid=False)
+    xs_i = [dy.pick(x_filtered_i, i) for i in range(x_filtered_i.dim()[0][0])]
+    xs_f = [dy.pick(x_filtered_f, i) for i in range(x_filtered_f.dim()[0][0])]
+    xs_o = [dy.pick(x_filtered_o, i) for i in range(x_filtered_o.dim()[0][0])]
+    xs_g = [dy.pick(x_filtered_g, i) for i in range(x_filtered_g.dim()[0][0])]
     h = []
     c = []
-    for i, x_t in enumerate(xs):
-      tmp = xs[i]
+    for i in range(len(xs_i)):
+      i_ait = xs_i[i]
+      i_aft = xs_f[i]
+      i_aot = xs_o[i]
+      i_agt = xs_g[i]
       if i>0:
-        wh = dy.conv2d(dy.reshape(h[-1], (1, h[-1].dim()[0][0], h[-1].dim()[0][1]), batch_size=batch_size), dy.parameter(self.p_h2i), stride=(1,1), is_valid=False)
-        tmp += dy.reshape(wh, (wh.dim()[0][1], wh.dim()[0][2]), batch_size=batch_size)
+        wh_i = dy.conv2d(dy.reshape(h[-1], (1, h[-1].dim()[0][0], h[-1].dim()[0][1]), batch_size=batch_size), dy.parameter(self.p_h2i), stride=(1,1), is_valid=False)
+        wh_f = dy.conv2d(dy.reshape(h[-1], (1, h[-1].dim()[0][0], h[-1].dim()[0][1]), batch_size=batch_size), dy.parameter(self.p_h2f), stride=(1,1), is_valid=False)
+        wh_o = dy.conv2d(dy.reshape(h[-1], (1, h[-1].dim()[0][0], h[-1].dim()[0][1]), batch_size=batch_size), dy.parameter(self.p_h2o), stride=(1,1), is_valid=False)
+        wh_g = dy.conv2d(dy.reshape(h[-1], (1, h[-1].dim()[0][0], h[-1].dim()[0][1]), batch_size=batch_size), dy.parameter(self.p_h2g), stride=(1,1), is_valid=False)
+        i_ait += dy.reshape(wh_i, (wh_i.dim()[0][1], wh_i.dim()[0][2]), batch_size=batch_size)
+        i_aft += dy.reshape(wh_f, (wh_i.dim()[0][1], wh_f.dim()[0][2]), batch_size=batch_size)
+        i_aot += dy.reshape(wh_o, (wh_i.dim()[0][1], wh_o.dim()[0][2]), batch_size=batch_size)
+        i_agt += dy.reshape(wh_g, (wh_i.dim()[0][1], wh_g.dim()[0][2]), batch_size=batch_size)
 
-      i_ait = dy.select_cols(tmp, range(self.num_filters))
-      i_aft = dy.select_cols(tmp, range(self.num_filters,2*self.num_filters))
-      i_aot = dy.select_cols(tmp, range(2*self.num_filters,3*self.num_filters))
-      i_agt = dy.select_cols(tmp, range(3*self.num_filters,4*self.num_filters))
       i_it = dy.logistic(i_ait)
       i_ft = dy.logistic(i_aft + 1.0)
       i_ot = dy.logistic(i_aot)
