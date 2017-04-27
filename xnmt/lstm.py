@@ -1,5 +1,4 @@
 import dynet as dy
-from embedder import TensorExprEmbeddedSentence
 
 class PythonLSTMBuilder:
   """
@@ -88,10 +87,7 @@ class ConvLSTMBuilder:
   def add_inputs(self):
     pass
   def transduce(self, es):
-    if isinstance(es, TensorExprEmbeddedSentence):
-      es_expr = es.get_tensor_repr()
-    else:
-      es_expr = dy.concatenate(map(lambda v: dy.transpose(v), es))
+    es_expr = es.as_tensor()
     sent_len = es_expr.dim()[0][0]
     batch_size=es_expr.dim()[1]
     
