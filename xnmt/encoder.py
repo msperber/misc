@@ -38,6 +38,7 @@ class Encoder:
       stridedConv = StridedConvEncoder(encoder_layers, input_embedder, model)
       return ModularEncoder([
                              stridedConv,
+                             ConvLstmEncoder(1, NoopEmbedder(stridedConv.encoder.get_output_dim(), model), model, chn_dim=32),
                              BiLSTMEncoder(encoder_layers, encoder_hidden_dim, NoopEmbedder(stridedConv.encoder.get_output_dim(), model), model),
                              ],
                             model
@@ -103,6 +104,14 @@ class StridedConvEncoder(DefaultEncoder):
     self.embedder = embedder
     input_dim = embedder.emb_dim
     self.encoder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model)
+    self.serialize_params = [layers, embedder, model]
+
+class ConvLstmEncoder(DefaultEncoder):
+
+  def __init__(self, layers, embedder, model, chn_dim):
+    self.embedder = embedder
+    input_dim = embedder.emb_dim
+    self.encoder = lstm.ConvLSTMBuilder(layers, input_dim, model, chn_dim=chn_dim)
     self.serialize_params = [layers, embedder, model]
 
 class AudioEncoder(DefaultEncoder):
