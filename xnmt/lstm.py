@@ -84,7 +84,7 @@ class ConvLSTMBuilder:
     self.p_h2g = model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, self.chn_dim, self.num_filters),
                                          init=normalInit)
     self.p_bi  = model.add_parameters(dim=(self.num_filters,), init=normalInit)
-    self.p_bf  = model.add_parameters(dim=(self.num_filters,), init=dy.ConstInitializer(1.0))
+    self.p_bf  = model.add_parameters(dim=(self.num_filters,), init=dy.ConstInitializer(0.0))
     self.p_bo  = model.add_parameters(dim=(self.num_filters,), init=normalInit)
     self.p_bg  = model.add_parameters(dim=(self.num_filters,), init=normalInit)
 
