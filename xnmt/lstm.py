@@ -1,4 +1,5 @@
 import dynet as dy
+import embedder
 
 class PythonLSTMBuilder:
   """
@@ -144,3 +145,85 @@ class ConvLSTMBuilder:
       h.append(h_t)
     return [dy.reshape(state, (state.dim()[0][0] * state.dim()[0][1],), batch_size=batch_size) for state in h]
   
+class PreInitBiRNNBuilder(object):
+    """
+    Builder for BiRNNs that delegates to regular RNNs and wires them together.  
+    
+        builder = BiRNNBuilder(1, 128, 100, model, LSTMBuilder)
+        [o1,o2,o3] = builder.transduce([i1,i2,i3])
+    """
+    def __init__(self, model, rnn_builders_fwd, rnn_builders_bwd):
+        """
+        :param model
+        :param rnn_builders_fwd: already initialized builders
+        :param rnn_builders_bwd: already initialized builders
+        """
+        assert len(rnn_builders_fwd) == len(rnn_builders_bwd)
+        self.builder_layers = []
+        for f,b in zip(rnn_builders_fwd, rnn_builders_bwd):
+          self.builder_layers.append((f,b))
+
+    def whoami(self): return "PreInitBiRNNBuilder"
+
+    def set_dropout(self, p):
+      for (fb,bb) in self.builder_layers:
+        fb.set_dropout(p)
+        bb.set_dropout(p)
+    def disable_dropout(self):
+      for (fb,bb) in self.builder_layers:
+        fb.disable_dropout()
+        bb.disable_dropout()
+
+    def add_inputs(self, es):
+        """
+        returns the list of state pairs (stateF, stateB) obtained by adding 
+        inputs to both forward (stateF) and backward (stateB) RNNs.  
+
+        @param es: a list of Expression
+
+        see also transduce(xs)
+
+        .transduce(xs) is different from .add_inputs(xs) in the following way:
+
+            .add_inputs(xs) returns a list of RNNState pairs. RNNState objects can be
+             queried in various ways. In particular, they allow access to the previous
+             state, as well as to the state-vectors (h() and s() )
+
+            .transduce(xs) returns a list of Expression. These are just the output
+             expressions. For many cases, this suffices. 
+             transduce is much more memory efficient than add_inputs. 
+        """
+        for (fb,bb) in self.builder_layers[:-1]:
+            fs = fb.initial_state().transduce(es)
+            bs = bb.initial_state().transduce(reversed(es))
+            es = [dy.concatenate([f,b]) for f,b in zip(fs, reversed(bs))]
+        (fb,bb) = self.builder_layers[-1]
+        fs = fb.initial_state().add_inputs(es)
+        bs = bb.initial_state().add_inputs(reversed(es))
+        return [(f,b) for f,b in zip(fs, reversed(bs))]
+
+    def transduce(self, es):
+        """
+        returns the list of output Expressions obtained by adding the given inputs
+        to the current state, one by one, to both the forward and backward RNNs, 
+        and concatenating.
+        
+        @param es: a list of Expression
+
+        see also add_inputs(xs)
+
+        .transduce(xs) is different from .add_inputs(xs) in the following way:
+
+            .add_inputs(xs) returns a list of RNNState pairs. RNNState objects can be
+             queried in various ways. In particular, they allow access to the previous
+             state, as well as to the state-vectors (h() and s() )
+
+            .transduce(xs) returns a list of Expression. These are just the output
+             expressions. For many cases, this suffices. 
+             transduce is much more memory efficient than add_inputs. 
+        """
+        for (fb,bb) in self.builder_layers:
+            fs = fb.initial_state().transduce(es)
+            bs = bb.initial_state().transduce(embedder.ExpressionSequence(expr_list=reversed(es)))
+            es = [dy.concatenate([f,b]) for f,b in zip(fs, reversed(bs))]
+        return es
