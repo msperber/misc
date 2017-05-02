@@ -108,10 +108,11 @@ class ConvLSTMBuilder:
       x_filtered_g = dy.conv2d_bias(es_chn, dy.parameter(self.params["x2g_" + direction]), dy.parameter(self.params["bg_" + direction]), stride=(1,1), is_valid=False)
 
       # convert tensor into list
-      xs_i = [dy.pick(x_filtered_i, i) for i in range(x_filtered_i.dim()[0][0])]
-      xs_f = [dy.pick(x_filtered_f, i) for i in range(x_filtered_f.dim()[0][0])]
-      xs_o = [dy.pick(x_filtered_o, i) for i in range(x_filtered_o.dim()[0][0])]
-      xs_g = [dy.pick(x_filtered_g, i) for i in range(x_filtered_g.dim()[0][0])]
+      deep_dim = (1, x_filtered_i.dim()[0][1], x_filtered_i.dim()[0][2])
+      xs_i = [dy.reshape(dy.pick(x_filtered_i, i), deep_dim, batch_size=batch_size) for i in range(x_filtered_i.dim()[0][0])]
+      xs_f = [dy.reshape(dy.pick(x_filtered_f, i), deep_dim, batch_size=batch_size) for i in range(x_filtered_f.dim()[0][0])]
+      xs_o = [dy.reshape(dy.pick(x_filtered_o, i), deep_dim, batch_size=batch_size) for i in range(x_filtered_o.dim()[0][0])]
+      xs_g = [dy.reshape(dy.pick(x_filtered_g, i), deep_dim, batch_size=batch_size) for i in range(x_filtered_g.dim()[0][0])]
 
       h = []
       c = []
@@ -123,14 +124,14 @@ class ConvLSTMBuilder:
         i_agt = xs_g[directional_pos]
         if input_pos>0:
           # recurrent convolutions
-          wh_i = dy.conv2d(dy.reshape(h[-1], (1, h[-1].dim()[0][0], h[-1].dim()[0][1]), batch_size=batch_size), dy.parameter(self.params["h2i_" + direction]), stride=(1,1), is_valid=False)
-          wh_f = dy.conv2d(dy.reshape(h[-1], (1, h[-1].dim()[0][0], h[-1].dim()[0][1]), batch_size=batch_size), dy.parameter(self.params["h2f_" + direction]), stride=(1,1), is_valid=False)
-          wh_o = dy.conv2d(dy.reshape(h[-1], (1, h[-1].dim()[0][0], h[-1].dim()[0][1]), batch_size=batch_size), dy.parameter(self.params["h2o_" + direction]), stride=(1,1), is_valid=False)
-          wh_g = dy.conv2d(dy.reshape(h[-1], (1, h[-1].dim()[0][0], h[-1].dim()[0][1]), batch_size=batch_size), dy.parameter(self.params["h2g_" + direction]), stride=(1,1), is_valid=False)
-          i_ait += dy.reshape(wh_i, (wh_i.dim()[0][1], wh_i.dim()[0][2]), batch_size=batch_size)
-          i_aft += dy.reshape(wh_f, (wh_i.dim()[0][1], wh_f.dim()[0][2]), batch_size=batch_size)
-          i_aot += dy.reshape(wh_o, (wh_i.dim()[0][1], wh_o.dim()[0][2]), batch_size=batch_size)
-          i_agt += dy.reshape(wh_g, (wh_i.dim()[0][1], wh_g.dim()[0][2]), batch_size=batch_size)
+          wh_i = dy.conv2d(h[-1], dy.parameter(self.params["h2i_" + direction]), stride=(1,1), is_valid=False)
+          wh_f = dy.conv2d(h[-1], dy.parameter(self.params["h2f_" + direction]), stride=(1,1), is_valid=False)
+          wh_o = dy.conv2d(h[-1], dy.parameter(self.params["h2o_" + direction]), stride=(1,1), is_valid=False)
+          wh_g = dy.conv2d(h[-1], dy.parameter(self.params["h2g_" + direction]), stride=(1,1), is_valid=False)
+          i_ait += wh_i
+          i_aft += wh_f
+          i_aot += wh_o
+          i_agt += wh_g
         
         # standard LSTM logic
         i_it = dy.logistic(i_ait)
@@ -144,7 +145,7 @@ class ConvLSTMBuilder:
         h_t = dy.cmult(i_ot, dy.tanh(c[-1]))
         h.append(h_t)
       h_out[direction] = h
-    return [dy.concatenate([dy.reshape(state_fwd, (state_fwd.dim()[0][0] * state_fwd.dim()[0][1],), batch_size=batch_size),
-                            dy.reshape(state_bwd, (state_bwd.dim()[0][0] * state_bwd.dim()[0][1],), batch_size=batch_size)]) \
+    return [dy.concatenate([dy.reshape(state_fwd, (state_fwd.dim()[0][1] * state_fwd.dim()[0][2],), batch_size=batch_size),
+                            dy.reshape(state_bwd, (state_bwd.dim()[0][1] * state_bwd.dim()[0][2],), batch_size=batch_size)]) \
             for (state_fwd,state_bwd) in zip(h_out["fwd"], reversed(h_out["bwd"]))]
   
