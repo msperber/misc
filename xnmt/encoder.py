@@ -36,12 +36,10 @@ class Encoder:
     elif spec_lower == "modular":
       # example for a modular encoder: stacked pyramidal encoder, followed by stacked LSTM 
       stridedConv = StridedConvEncoder(encoder_layers, input_embedder, model)
-#      convLstm = ConvLstmEncoder(1, NoopEmbedder(stridedConv.encoder.get_output_dim(), model), model, chn_dim=32)
-      convLstmFwd = lstm.ConvLSTMBuilder(1, stridedConv.encoder.get_output_dim(), model, chn_dim=32)
-      convLstmBwd = lstm.ConvLSTMBuilder(1, stridedConv.encoder.get_output_dim(), model, chn_dim=32)
+      convLstm = ConvLstmEncoder(1, NoopEmbedder(stridedConv.encoder.get_output_dim(), model), model, chn_dim=32)
       return ModularEncoder([
                              stridedConv,
-                             PreInitBiLSTMEncoder(NoopEmbedder(stridedConv.encoder.get_output_dim(), model), model, [convLstmFwd], [convLstmBwd]),
+                             convLstm,
                              BiLSTMEncoder(encoder_layers, encoder_hidden_dim, NoopEmbedder(stridedConv.encoder.get_output_dim()*2, model), model),
                              ],
                             model
@@ -65,12 +63,6 @@ class BiLSTMEncoder(DefaultEncoder):
     self.encoder = dy.BiRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder)
     self.serialize_params = [layers, output_dim, embedder, model]
 
-class PreInitBiLSTMEncoder(DefaultEncoder):
-
-  def __init__(self, embedder, model, builders_fwd, builders_bwd):
-    self.embedder = embedder
-    self.encoder = lstm.PreInitBiRNNBuilder(model, builders_fwd, builders_bwd)
-    self.serialize_params = [embedder, model]
 
 class ResidualLSTMEncoder(DefaultEncoder):
 
