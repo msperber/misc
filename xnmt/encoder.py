@@ -35,7 +35,7 @@ class Encoder:
       return AudioEncoder(encoder_layers, encoder_hidden_dim, input_embedder, model)
     elif spec_lower == "modular":
       # example for a modular encoder: stacked pyramidal encoder, followed by stacked LSTM 
-      stridedConv = StridedConvEncoder(encoder_layers, input_embedder, model)
+      stridedConv = StridedConvEncoder(encoder_layers, input_embedder, model, output_tensor=True)
       convLstm = ConvLstmEncoder(1, NoopEmbedder(stridedConv.encoder.get_output_dim(), model), model, chn_dim=32)
       return ModularEncoder([
                              stridedConv,
@@ -102,11 +102,11 @@ class ConvBiLSTMEncoder(DefaultEncoder):
 
 class StridedConvEncoder(DefaultEncoder):
 
-  def __init__(self, layers, embedder, model):
+  def __init__(self, layers, embedder, model, output_tensor=False):
     self.embedder = embedder
     input_dim = embedder.emb_dim
-    self.encoder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model)
-    self.serialize_params = [layers, embedder, model]
+    self.encoder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model, output_tensor=output_tensor)
+    self.serialize_params = [layers, embedder, model, output_tensor]
 
 class ConvLstmEncoder(DefaultEncoder):
 
@@ -134,5 +134,8 @@ class ModularEncoder(Encoder):
     for i, module in enumerate(self.module_list):
       sentence = module.encode(sentence)
       if i<len(self.module_list)-1:
-        sentence = ExpressionSequence(expr_list=sentence)
+        if type(sentence)==dy.Expression:
+          sentence = ExpressionSequence(expr_tensor=sentence)
+        else:
+          sentence = ExpressionSequence(expr_list=sentence)
     return sentence

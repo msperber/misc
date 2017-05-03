@@ -97,7 +97,10 @@ class ConvLSTMBuilder:
     sent_len = es_expr.dim()[0][0]
     batch_size=es_expr.dim()[1]
     
-    es_chn = dy.reshape(es_expr, (sent_len, self.freq_dim, self.chn_dim), batch_size=batch_size) # ((276, 80, 3), 1)
+    if es_expr.dim() == ((sent_len, self.freq_dim, self.chn_dim), batch_size):
+      es_chn = es_expr
+    else:
+      es_chn = dy.reshape(es_expr, (sent_len, self.freq_dim, self.chn_dim), batch_size=batch_size) # ((276, 80, 3), 1)
 
     h_out = {}
     for direction in ["fwd", "bwd"]:

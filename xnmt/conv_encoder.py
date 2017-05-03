@@ -96,7 +96,7 @@ class StridedConvEncBuilder(object):
   Implements several CNN layers, each with stride (2,2), resulting in downsampling by 2**(num_layers-1) in both dimensions.
   """
   
-  def __init__(self, num_layers, input_dim, model, chn_dim=3, num_filters=32):
+  def __init__(self, num_layers, input_dim, model, chn_dim=3, num_filters=32, output_tensor=False):
     """
     :param num_layers: encoder depth
     :param input_dim: size of the inputs, before factoring out the channels.
@@ -115,6 +115,7 @@ class StridedConvEncBuilder(object):
     self.filter_size_time = 3
     self.filter_size_freq = 3
     self.stride = (2,2)
+    self.output_tensor = output_tensor
     
     normalInit=dy.NormalInitializer(0, 0.1)
     self.filters_layers = []
@@ -164,6 +165,10 @@ class StridedConvEncBuilder(object):
     cnn_layer = es_chn
     for filters in self.filters_layers:
       cnn_layer = dy.conv2d(cnn_layer, dy.parameter(filters), stride=self.stride, is_valid=True)
-    cnn_out = dy.reshape(cnn_layer, (cnn_layer.dim()[0][0], cnn_layer.dim()[0][1]*cnn_layer.dim()[0][2]), batch_size=batch_size)
-    es_list = [cnn_out[i] for i in range(cnn_out.dim()[0][0])]
-    return es_list
+    
+    if self.output_tensor:
+      return cnn_layer
+    else:
+      cnn_out = dy.reshape(cnn_layer, (cnn_layer.dim()[0][0], cnn_layer.dim()[0][1]*cnn_layer.dim()[0][2]), batch_size=batch_size)
+      es_list = [cnn_out[i] for i in range(cnn_out.dim()[0][0])]
+      return es_list
