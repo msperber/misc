@@ -94,6 +94,7 @@ class XnmtTrainer:
       self.translator = DefaultTranslator(self.encoder, self.attender, self.decoder)
       self.input_reader = InputReader.create_input_reader(self.args.input_format, source_vocab)
       self.output_reader = InputReader.create_input_reader("text", target_vocab)
+      self.input_word_emb_dim = self.args.input_word_embed_dim
       self.read_data()
       return
 
