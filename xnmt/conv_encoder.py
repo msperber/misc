@@ -192,8 +192,7 @@ class StridedConvEncBuilder(object):
           bn_chn_num = dy.pick(cnn_layer, chn_i, 2) - dy.pick(bn_mean, chn_i, 0)
           bn_chn_denom = dy.sqrt(dy.pick(bn_var, chn_i, 0) + self.bn_eps)
           # TODO: need expr * expr or expr / expr where one expr is a matrix, the other is a scalar
-  #        bn_per_channel.append(bn_chn_num / bn_chn_denom)
-          bn_xhat = bn_chn_num # / bn_chn_denom
+          bn_xhat = dy.cmult(dy.inverse(bn_chn_denom), bn_chn_num)
 #          bn_y = dy.pick(param_bn_gamma, chn_i) * bn_xhat + dy.pick(param_bn_beta, chn_i) 
           bn_y = bn_xhat * 0.5 + dy.pick(param_bn_beta, chn_i) 
           bn_per_channel.append(bn_y)
