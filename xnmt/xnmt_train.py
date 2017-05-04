@@ -30,6 +30,8 @@ options = [
   Option("dev_target"),
   Option("model_file"),
   Option("pretrained_model_file", default_value="", help="Path of pre-trained model file"),
+  Option("input_vocab", default_value="", help="Path of fixed input vocab file"),
+  Option("output_vocab", default_value="", help="Path of fixed output vocab file"),
   Option("input_format", default_value="text", help="Format of input data: text/contvec"),
   Option("default_layer_dim", int, default_value=512, help="Default size to use for layers if not otherwise overridden"),
   Option("input_word_embed_dim", int, required=False),
@@ -100,10 +102,19 @@ class XnmtTrainer:
     self.model_serializer = JSONSerializer()
 
     # Read in training and dev corpora
-    self.input_reader = InputReader.create_input_reader(self.args.input_format)
-    self.output_reader = InputReader.create_input_reader("text")
+    input_vocab, output_vocab = None, None
+    if self.args.input_vocab:
+      input_vocab = Vocab(vocab_file=self.args.input_vocab)
+    if self.args.output_vocab:
+      output_vocab = Vocab(vocab_file=self.args.output_vocab)
+    self.input_reader = InputReader.create_input_reader(self.args.input_format, input_vocab)
+    self.output_reader = InputReader.create_input_reader("text", output_vocab)
+    if self.args.input_vocab:
+      self.input_reader.freeze()
+    if self.args.output_vocab:
+      self.output_reader.freeze()
     self.read_data()
-
+    
     # Get layer sizes: replace by default if not specified
     for opt in ["input_word_embed_dim", "output_word_embed_dim", "output_state_dim", "output_mlp_hidden_dim",
                 "encoder_hidden_dim", "attender_hidden_dim"]:
