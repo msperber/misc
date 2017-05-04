@@ -75,7 +75,7 @@ class XnmtTrainer:
       print('Start training in minibatch mode...')
       self.batcher = Batcher.select_batcher(args.batch_strategy)(args.batch_size)
       if args.input_format == "contvec":
-        self.batcher.pad_token = np.zeros(self.input_word_emb_dim)
+        self.batcher.pad_token = np.zeros(self.encoder.embedder.get_embed_dim())
       self.train_corpus_source, self.train_corpus_target = self.batcher.pack(self.train_corpus_source,
                                                                              self.train_corpus_target)
       self.dev_corpus_source, self.dev_corpus_target = self.batcher.pack(self.dev_corpus_source,
@@ -94,7 +94,6 @@ class XnmtTrainer:
       self.translator = DefaultTranslator(self.encoder, self.attender, self.decoder)
       self.input_reader = InputReader.create_input_reader(self.args.input_format, source_vocab)
       self.output_reader = InputReader.create_input_reader("text", target_vocab)
-      self.input_word_emb_dim = self.args.input_word_embed_dim
       self.read_data()
       return
 

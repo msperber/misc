@@ -23,6 +23,9 @@ class Embedder:
       return NoopEmbedder(emb_dim, model)
     else:
       raise RuntimeError("Unknown input type {}".format(input_format))
+  
+  def get_embed_dim(self):
+    return self.emb_dim
 
 class ExpressionSequence():
   """
