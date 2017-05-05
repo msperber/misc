@@ -121,11 +121,14 @@ class StridedConvEncBuilder(object):
     
     self.use_bn = True
     self.bn_eps = 0.00001
+    self.train = True
     
     normalInit=dy.NormalInitializer(0, 0.1)
     self.filters_layers = []
     self.bn_gamma_layers = []
     self.bn_beta_layers = []
+    self.bn_population_avg_layers = []
+    self.bn_population_cnt_layers = []
     self.filters_layers = []
     for layer_i in range(num_layers):
       filters = model.add_parameters(dim=(self.filter_size_time,
@@ -136,11 +139,15 @@ class StridedConvEncBuilder(object):
       if self.use_bn:
         bn_gamma = model.add_parameters(dim=(self.num_filters, ), init=dy.NumpyInitializer(np.random.uniform(0,1,self.num_filters)))
         bn_beta = model.add_parameters(dim=(self.num_filters, ), init=normalInit)
+        bn_population_avg = np.zeroes((self.num_filters, ))
+        bn_population_cnt = 0
       else:
-        bn_gamma, bn_beta = None, None
+        bn_gamma, bn_beta, bn_population_avg, bn_population_cnt = None, None, None, None
       self.filters_layers.append(filters)
       self.bn_gamma_layers.append(bn_gamma)
       self.bn_beta_layers.append(bn_beta)
+      self.bn_population_avg_layers.append(bn_population_avg)
+      self.bn_population_cnt_layers.append(bn_population_cnt)
   
   def get_output_dim(self):
     conv_dim = self.freq_dim
@@ -178,25 +185,31 @@ class StridedConvEncBuilder(object):
     # loop over layers    
     es_chn = dy.reshape(es_expr, (sent_len, self.freq_dim, self.chn_dim), batch_size=batch_size)
     cnn_layer = es_chn
-    for (filters, bn_gamma, bn_beta) in zip(self.filters_layers, self.bn_gamma_layers, self.bn_beta_layers):
+    for layer_i in range(len(self.filters_layers)):
+      filters = self.filters_layers[layer_i]
+      bn_gamma = self.bn_gamma_layers[layer_i]
+      bn_beta = self.bn_beta_layers[layer_i]
+      bn_population_avg = self.bn_population_avg_layers[layer_i]
       # convolution layer
       cnn_layer = dy.conv2d(cnn_layer, dy.parameter(filters), stride=self.stride, is_valid=True)
       if self.use_bn:
-        param_bn_gamma = dy.parameter(bn_gamma)
-        param_bn_beta = dy.parameter(bn_beta)
-        # TODO: batch normalization layer
-        bn_mean = dy.mean_batches(dy.mean_dim(dy.mean_dim(cnn_layer, 1),0)) # output dim: ((32,), 1)
-        bn_var = dy.moment_batches(dy.moment_dim(dy.moment_dim(cnn_layer, 1, 2),0, 2), 2)
-        bn_per_channel = []
-        for chn_i in range(self.num_filters):
-          bn_chn_num = dy.pick(cnn_layer, chn_i, 2) - dy.pick(bn_mean, chn_i, 0)
-          bn_chn_denom = dy.sqrt(dy.pick(bn_var, chn_i, 0) + self.bn_eps)
-          # TODO: need expr * expr or expr / expr where one expr is a matrix, the other is a scalar
-          bn_xhat = dy.cmult(dy.inverse(bn_chn_denom), bn_chn_num)
-#          bn_y = dy.pick(param_bn_gamma, chn_i) * bn_xhat + dy.pick(param_bn_beta, chn_i) 
-          bn_y = bn_xhat * 0.5 + dy.pick(param_bn_beta, chn_i) 
-          bn_per_channel.append(bn_y)
-          # TODO: handle case of inference
+        if self.train:
+          param_bn_gamma = dy.parameter(bn_gamma)
+          param_bn_beta = dy.parameter(bn_beta)
+          # TODO: batch normalization layer
+          bn_mean = dy.mean_batches(dy.mean_dim(dy.mean_dim(cnn_layer, 1),0)) # output dim: ((32,), 1)
+          bn_var = dy.moment_batches(dy.moment_dim(dy.moment_dim(cnn_layer, 1, 2),0, 2), 2)
+          bn_per_channel = []
+          for chn_i in range(self.num_filters):
+            bn_chn_num = dy.pick(cnn_layer, chn_i, 2) - dy.pick(bn_mean, chn_i, 0)
+            bn_chn_denom = dy.sqrt(dy.pick(bn_var, chn_i, 0) + self.bn_eps)
+            bn_xhat = dy.cmult(dy.inverse(bn_chn_denom), bn_chn_num)
+            bn_y = dy.cmult(dy.pick(param_bn_gamma, chn_i), bn_xhat) + dy.pick(param_bn_beta, chn_i) 
+            bn_per_channel.append(bn_y)
+          # TODO: remember population averages / counts
+        else: # TODO: handle case of inference
+          pass
+          
         bnormalized_cnn_layer = dy.concatenate(bn_per_channel, 2)
         cnn_layer = bnormalized_cnn_layer
     
