@@ -123,7 +123,7 @@ class StridedConvEncBuilder(object):
     self.bn_eps = 0.00001
     self.train = True
     
-    normalInit=dy.NormalInitializer(0, 0.1)
+    normalInit=dy.NormalInitializer(0, 0.000001)
     self.filters_layers = []
     self.bn_gamma_layers = []
     self.bn_beta_layers = []
@@ -139,7 +139,7 @@ class StridedConvEncBuilder(object):
       if self.use_bn:
         bn_gamma = model.add_parameters(dim=(self.num_filters, ), init=dy.NumpyInitializer(np.random.uniform(0,1,self.num_filters)))
         bn_beta = model.add_parameters(dim=(self.num_filters, ), init=normalInit)
-        bn_population_avg = np.zeroes((self.num_filters, ))
+        bn_population_avg = np.zeros((self.num_filters, ))
         bn_population_cnt = 0
       else:
         bn_gamma, bn_beta, bn_population_avg, bn_population_cnt = None, None, None, None
@@ -201,18 +201,24 @@ class StridedConvEncBuilder(object):
           bn_var = dy.moment_batches(dy.moment_dim(dy.moment_dim(cnn_layer, 1, 2),0, 2), 2)
           bn_per_channel = []
           for chn_i in range(self.num_filters):
+            
             bn_chn_num = dy.pick(cnn_layer, chn_i, 2) - dy.pick(bn_mean, chn_i, 0)
             bn_chn_denom = dy.sqrt(dy.pick(bn_var, chn_i, 0) + self.bn_eps)
             bn_xhat = dy.cmult(dy.inverse(bn_chn_denom), bn_chn_num)
             bn_y = dy.cmult(dy.pick(param_bn_gamma, chn_i), bn_xhat) + dy.pick(param_bn_beta, chn_i) 
             bn_per_channel.append(bn_y)
           # TODO: remember population averages / counts
+          cnt = self.bn_population_cnt_layers[layer_i] + 1
+          bn_population_avg = (cnt-1.)/cnt*bn_population_avg + (1./cnt)*np.asarray(bn_mean.value())
+          self.bn_population_cnt_layers[layer_i] = cnt
         else: # TODO: handle case of inference
           pass
           
         bnormalized_cnn_layer = dy.concatenate(bn_per_channel, 2)
+        assert bnormalized_cnn_layer.dim() == cnn_layer.dim()
+        print bnormalized_cnn_layer.dim()
+        print cnn_layer.dim()
         cnn_layer = bnormalized_cnn_layer
-    
     if self.output_tensor:
       return cnn_layer
     else:
