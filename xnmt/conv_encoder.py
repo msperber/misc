@@ -120,7 +120,7 @@ class StridedConvEncBuilder(object):
     self.output_tensor = output_tensor
     
     self.use_bn = True
-    self.bn_eps = 0.00001
+    self.bn_eps = 0.001
     self.train = True
     
     normalInit=dy.NormalInitializer(0, 0.000001)
@@ -187,25 +187,23 @@ class StridedConvEncBuilder(object):
     cnn_layer = es_chn
     for layer_i in range(len(self.filters_layers)):
       filters = self.filters_layers[layer_i]
-      bn_gamma = self.bn_gamma_layers[layer_i]
-      bn_beta = self.bn_beta_layers[layer_i]
-      bn_population_avg = self.bn_population_avg_layers[layer_i]
       # convolution layer
       cnn_layer = dy.conv2d(cnn_layer, dy.parameter(filters), stride=self.stride, is_valid=True)
+      # batch norm layer
       if self.use_bn:
+        param_bn_gamma = dy.parameter(self.bn_gamma_layers[layer_i])
+        param_bn_beta = dy.parameter(self.bn_beta_layers[layer_i])
+        bn_population_avg = self.bn_population_avg_layers[layer_i]
         if self.train:
-          param_bn_gamma = dy.parameter(bn_gamma)
-          param_bn_beta = dy.parameter(bn_beta)
           # TODO: batch normalization layer
-          bn_mean = dy.mean_batches(dy.mean_dim(dy.mean_dim(cnn_layer, 1),0)) # output dim: ((32,), 1)
-          bn_var = dy.moment_batches(dy.moment_dim(dy.moment_dim(cnn_layer, 1, 2),0, 2), 2)
+          bn_mean = dy.mean_batches(dy.mean_dim(dy.mean_dim(cnn_layer, 1),0)) # mean over batches, time and freq dimensions
+          bn_std = dy.std_batches(dy.std_dim(dy.std_dim(cnn_layer, 1),0)) # std over batches, time and freq dimensions
           bn_per_channel = []
           for chn_i in range(self.num_filters):
-            
-            bn_chn_num = dy.pick(cnn_layer, chn_i, 2) - dy.pick(bn_mean, chn_i, 0)
-            bn_chn_denom = dy.sqrt(dy.pick(bn_var, chn_i, 0) + self.bn_eps)
-            bn_xhat = dy.cmult(dy.inverse(bn_chn_denom), bn_chn_num)
-            bn_y = dy.cmult(dy.pick(param_bn_gamma, chn_i), bn_xhat) + dy.pick(param_bn_beta, chn_i) 
+            bn_chn_num = dy.pick(cnn_layer, chn_i, 2) - dy.pick(bn_mean, chn_i, 0) # matrix - scalar
+            bn_chn_denom = dy.pick(bn_std, chn_i, 0) + self.bn_eps # scalar
+            bn_xhat = dy.cmult(dy.inverse(bn_chn_denom), bn_chn_num) # matrix / scalar
+            bn_y = dy.cmult(dy.pick(param_bn_gamma, chn_i), bn_xhat) + dy.pick(param_bn_beta, chn_i) # y = gamma * xhat + beta 
             bn_per_channel.append(bn_y)
           # TODO: remember population averages / counts
           cnt = self.bn_population_cnt_layers[layer_i] + 1
