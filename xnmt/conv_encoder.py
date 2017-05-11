@@ -119,11 +119,11 @@ class StridedConvEncBuilder(object):
     self.stride = (2,2)
     self.output_tensor = output_tensor
     
-    self.use_bn = True
+    self.use_bn = False
     self.bn_eps = 0.001
     self.train = True
     
-    normalInit=dy.NormalInitializer(0, 0.000001)
+    normalInit=dy.NormalInitializer(0, 0.1)
     self.filters_layers = []
     self.bn_gamma_layers = []
     self.bn_beta_layers = []
@@ -144,7 +144,7 @@ class StridedConvEncBuilder(object):
         bn_population_std_sum = np.zeros((self.num_filters, ))
         bn_population_cnt = 0
       else:
-        bn_gamma, bn_beta, bn_population_mean_sum, bn_population_std_sum, bn_population_cnt = None, None, None, None
+        bn_gamma, bn_beta, bn_population_mean_sum, bn_population_std_sum, bn_population_cnt = None, None, None, None, None
       self.filters_layers.append(filters)
       self.bn_gamma_layers.append(bn_gamma)
       self.bn_beta_layers.append(bn_beta)

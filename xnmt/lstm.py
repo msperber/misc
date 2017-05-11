@@ -70,17 +70,16 @@ class ConvLSTMBuilder:
 
     self.params = {}
     for direction in ["fwd","bwd"]:
-      for gate in "ifog":
-        self.params['x2' + gate + "_" + direction] = \
-            model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, 
-                                      self.chn_dim, self.num_filters),
-                                 init=normalInit)
-        self.params['h2' + gate + "_" + direction] = \
-            model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, 
-                                      self.chn_dim, self.num_filters),
-                                 init=normalInit)
-        self.params['b' + gate + "_" + direction] = \
-            model.add_parameters(dim=(self.num_filters,), init=normalInit)
+      self.params["x2all_" + direction] = \
+          model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, 
+                                    self.chn_dim, self.num_filters * 4),
+                               init=normalInit)
+      self.params["h2all_" + direction] = \
+          model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, 
+                                    self.chn_dim, self.num_filters * 4),
+                               init=normalInit)
+      self.params["b_" + direction] = \
+          model.add_parameters(dim=(self.num_filters * 4,), init=normalInit)
     
   def whoami(self): return "ConvLSTMBuilder"
   
@@ -105,17 +104,17 @@ class ConvLSTMBuilder:
     h_out = {}
     for direction in ["fwd", "bwd"]:
       # input convolutions
-      x_filtered_i = dy.conv2d_bias(es_chn, dy.parameter(self.params["x2i_" + direction]), dy.parameter(self.params["bi_" + direction]), stride=(1,1), is_valid=False)
-      x_filtered_f = dy.conv2d_bias(es_chn, dy.parameter(self.params["x2f_" + direction]), dy.parameter(self.params["bf_" + direction]), stride=(1,1), is_valid=False)
-      x_filtered_o = dy.conv2d_bias(es_chn, dy.parameter(self.params["x2o_" + direction]), dy.parameter(self.params["bo_" + direction]), stride=(1,1), is_valid=False)
-      x_filtered_g = dy.conv2d_bias(es_chn, dy.parameter(self.params["x2g_" + direction]), dy.parameter(self.params["bg_" + direction]), stride=(1,1), is_valid=False)
+      x_filtered_all = dy.conv2d_bias(es_chn, dy.parameter(self.params["x2all_" + direction]), dy.parameter(self.params["b_" + direction]), stride=(1,1), is_valid=False)
+      x_filtered_i = dy.pick_range(x_filtered_all, 0, self.num_filters, 2)
+      x_filtered_f = dy.pick_range(x_filtered_all, self.num_filters, self.num_filters*2, 2)
+      x_filtered_o = dy.pick_range(x_filtered_all, self.num_filters*2, self.num_filters*3, 2)
+      x_filtered_g = dy.pick_range(x_filtered_all, self.num_filters*3, self.num_filters*4, 2)
 
       # convert tensor into list
-      deep_dim = (1, x_filtered_i.dim()[0][1], x_filtered_i.dim()[0][2])
-      xs_i = [dy.reshape(dy.pick(x_filtered_i, i), deep_dim, batch_size=batch_size) for i in range(x_filtered_i.dim()[0][0])]
-      xs_f = [dy.reshape(dy.pick(x_filtered_f, i), deep_dim, batch_size=batch_size) for i in range(x_filtered_f.dim()[0][0])]
-      xs_o = [dy.reshape(dy.pick(x_filtered_o, i), deep_dim, batch_size=batch_size) for i in range(x_filtered_o.dim()[0][0])]
-      xs_g = [dy.reshape(dy.pick(x_filtered_g, i), deep_dim, batch_size=batch_size) for i in range(x_filtered_g.dim()[0][0])]
+      xs_i = [dy.pick_range(x_filtered_i, i, i+1) for i in range(x_filtered_i.dim()[0][0])]
+      xs_f = [dy.pick_range(x_filtered_f, i, i+1) for i in range(x_filtered_f.dim()[0][0])]
+      xs_o = [dy.pick_range(x_filtered_o, i, i+1) for i in range(x_filtered_o.dim()[0][0])]
+      xs_g = [dy.pick_range(x_filtered_g, i, i+1) for i in range(x_filtered_g.dim()[0][0])]
 
       h = []
       c = []
@@ -127,10 +126,11 @@ class ConvLSTMBuilder:
         i_agt = xs_g[directional_pos]
         if input_pos>0:
           # recurrent convolutions
-          wh_i = dy.conv2d(h[-1], dy.parameter(self.params["h2i_" + direction]), stride=(1,1), is_valid=False)
-          wh_f = dy.conv2d(h[-1], dy.parameter(self.params["h2f_" + direction]), stride=(1,1), is_valid=False)
-          wh_o = dy.conv2d(h[-1], dy.parameter(self.params["h2o_" + direction]), stride=(1,1), is_valid=False)
-          wh_g = dy.conv2d(h[-1], dy.parameter(self.params["h2g_" + direction]), stride=(1,1), is_valid=False)
+          wh_all = dy.conv2d(h[-1], dy.parameter(self.params["h2all_" + direction]), stride=(1,1), is_valid=False)
+          wh_i = dy.pick_range(wh_all, 0, self.num_filters, 2)
+          wh_f = dy.pick_range(wh_all, self.num_filters, self.num_filters*2, 2)
+          wh_o = dy.pick_range(wh_all, self.num_filters*2, self.num_filters*3, 2)
+          wh_g = dy.pick_range(wh_all, self.num_filters*3, self.num_filters*4, 2)
           i_ait += wh_i
           i_aft += wh_f
           i_aot += wh_o
