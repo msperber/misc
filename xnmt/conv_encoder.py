@@ -220,6 +220,7 @@ class StridedConvEncBuilder(object):
           
         bnormalized_cnn_layer = dy.concatenate(bn_per_channel, 2)
         cnn_layer = bnormalized_cnn_layer
+      cnn_layer = dy.rectify(cnn_layer) # TODO: might do maxout (see https://arxiv.org/abs/1701.02720 )
     if self.output_tensor:
       return cnn_layer
     else:
