@@ -204,12 +204,17 @@ class NetworkInNetworkBiRNNBuilder(object):
     for layer_i, (fb, bb) in enumerate(self.builder_layers):
       fs = fb.initial_state().transduce(es)
       bs = bb.initial_state().transduce(reversed(es))
-      es = []
       lintransf_param = dy.parameter(self.lintransf_layers[layer_i])
+      projections = []
       for f, b in zip(fs, reversed(bs)):
         concat = dy.concatenate([f, b])
         proj = lintransf_param * concat
-        # TODO: insert batch normalization here
+        projections.append(proj)
+      # TODO: insert batch normalization here
+      # - concat projections to a tensor of size seq_len x hidden_dim x batch_size
+      # - compute means and variances over seq_len x batchsize
+      es = []
+      for proj in projections:
         nonlin = dy.rectify(proj)
         es.append(nonlin)
     return es
