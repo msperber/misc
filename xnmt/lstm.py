@@ -1,5 +1,6 @@
 import dynet as dy
 import embedder
+from residual import PseudoState
 
 class PythonLSTMBuilder:
   """
@@ -152,3 +153,66 @@ class ConvLSTMBuilder:
                             dy.reshape(state_bwd, (state_bwd.dim()[0][1] * state_bwd.dim()[0][2],), batch_size=batch_size)]) \
             for (state_fwd,state_bwd) in zip(h_out["fwd"], reversed(h_out["bwd"]))]
   
+
+class NetworkInNetworkBiRNNBuilder(object):
+  """
+  Builder for NiN-interleaved RNNs that delegates to regular RNNs and wires them together.
+  See http://iamaaditya.github.io/2016/03/one-by-one-convolution/
+  """
+  def __init__(self, num_layers, input_dim, hidden_dim, model, rnn_builder_factory):
+    """
+    @param num_layers: depth of the network
+    @param input_dim: size of the inputs
+    @param hidden_dim: size of the outputs (and intermediate layer representations)
+    @param model
+    @param rnn_builder_factory: RNNBuilder subclass, e.g. VanillaLSTMBuilder
+    """
+    assert num_layers > 0
+    assert hidden_dim % 2 == 0
+    self.builder_layers = []
+    f = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
+    b = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
+    self.builder_layers.append((f, b))
+    for _ in xrange(num_layers - 1):
+      f = rnn_builder_factory(1, hidden_dim, hidden_dim / 2, model)
+      b = rnn_builder_factory(1, hidden_dim, hidden_dim / 2, model)
+      self.builder_layers.append((f, b))
+    self.lintransf_layers = []
+    for _ in xrange(num_layers):
+      self.lintransf_layers.append(model.add_parameters(dim=(hidden_dim, hidden_dim)))
+
+  def whoami(self): return "PyramidalRNNBuilder"
+
+  def set_dropout(self, p):
+    for (fb, bb) in self.builder_layers:
+      fb.set_dropout(p)
+      bb.set_dropout(p)
+  def disable_dropout(self):
+    for (fb, bb) in self.builder_layers:
+      fb.disable_dropout()
+      bb.disable_dropout()
+
+  def transduce(self, es):
+    """
+    returns the list of output Expressions obtained by adding the given inputs
+    to the current state, one by one, to both the forward and backward RNNs, 
+    and concatenating.
+        
+    @param es: a list of Expression
+
+    """
+    for layer_i, (fb, bb) in enumerate(self.builder_layers):
+      fs = fb.initial_state().transduce(es)
+      bs = bb.initial_state().transduce(reversed(es))
+      es = []
+      lintransf_param = dy.parameter(self.lintransf_layers[layer_i])
+      for f, b in zip(fs, reversed(bs)):
+        concat = dy.concatenate([f, b])
+        proj = lintransf_param * concat
+        # TODO: insert batch normalization here
+        nonlin = dy.rectify(proj)
+        es.append(nonlin)
+    return es
+
+  def initial_state(self):
+    return PseudoState(self)

@@ -40,7 +40,7 @@ class Encoder:
       return ModularEncoder([
                              stridedConv,
                              convLstm,
-                             BiLSTMEncoder(encoder_layers, encoder_hidden_dim, NoopEmbedder(stridedConv.encoder.get_output_dim()*2, model), model),
+                             NiNBiLSTMEncoder(encoder_layers, encoder_hidden_dim, NoopEmbedder(stridedConv.encoder.get_output_dim()*2, model), model),
                              ],
                             model
                             )
@@ -82,6 +82,14 @@ class ResidualBiLSTMEncoder(DefaultEncoder):
     input_dim = embedder.emb_dim
     self.encoder = residual.ResidualBiRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder,
                                                  residual_to_output)
+    self.serialize_params = [layers, output_dim, embedder, model]
+
+class NiNBiLSTMEncoder(DefaultEncoder):
+
+  def __init__(self, layers, output_dim, embedder, model):
+    self.embedder = embedder
+    input_dim = embedder.emb_dim
+    self.encoder = lstm.NetworkInNetworkBiRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder)
     self.serialize_params = [layers, output_dim, embedder, model]
 
 class PyramidalBiLSTMEncoder(DefaultEncoder):
