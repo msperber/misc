@@ -73,6 +73,7 @@ def xnmt_decode(args, model_elements=None):
         target_sentence = target_sentence.decode('utf-8', errors='ignore').encode('utf-8', errors='ignore')
 
       fp.write(target_sentence + '\n')
+      fp.flush()
 
 
 if __name__ == "__main__":
