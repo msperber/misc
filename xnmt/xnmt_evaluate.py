@@ -6,7 +6,7 @@ from options import Option, OptionParser
 options = [
     Option("ref_file", help="path of the reference file"),
     Option("hyp_file", help="path of the hypothesis target file"),
-    Option("evaluator", default_value="bleu", help="Evaluation metrics (bleu/wer/cer)")
+    Option("evaluator", default_value="bleu", help="Evaluation metrics (bleu/wer/cer/wer-nopunct)")
 ]
 
 
@@ -32,6 +32,8 @@ def xnmt_evaluate(args):
         evaluator = WEREvaluator()
     elif args.evaluator == "cer":
         evaluator = CEREvaluator()
+    elif args.evaluator == "wer-nopunct":
+        evaluator = WEREvaluator(exclude_punctuation=True)
     else:
         raise RuntimeError("Unkonwn evaluation metric {}".format(args.evaluator))
 

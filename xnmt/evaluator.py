@@ -2,6 +2,7 @@ from __future__ import division, generators
 import numpy as np
 from collections import defaultdict, Counter
 import math
+import re
 
 
 class Evaluator(object):
@@ -173,11 +174,12 @@ class WEREvaluator(Evaluator):
   A class to evaluate the quality of output in terms of word error rate.
   """
 
-    def __init__(self, case_sensitive=False):
+    def __init__(self, case_sensitive=False, exclude_punctuation=False):
         self.case_sensitive = case_sensitive
+        self.exclude_punctuation=exclude_punctuation
 
     def metric_name(self):
-        return "Word error rate"
+        return "Word error rate" + " (excluding punctuation chars)" if self.exclude_punctuation else ""
 
     def evaluate(self, ref, hyp):
         """
@@ -199,8 +201,10 @@ class WEREvaluator(Evaluator):
     """
         if not self.case_sensitive:
             hyp_sent = map(lambda w: w.lower(), hyp_sent)
-        if not self.case_sensitive:
             ref_sent = map(lambda w: w.lower(), ref_sent)
+        if self.exclude_punctuation:
+            hyp_sent = filter(lambda s : re.match('\w+', s, flags=re.UNICODE), hyp_sent)
+            ref_sent = filter(lambda s : re.match('\w+', s, flags=re.UNICODE), ref_sent)
         return -self.seq_sim(ref_sent, hyp_sent), len(ref_sent)
 
     # gap penalty:
