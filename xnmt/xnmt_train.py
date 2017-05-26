@@ -21,6 +21,8 @@ This will be the main class to perform training.
 '''
 
 options = [
+  Option("dynet-mem", int, required=False),
+  Option("dynet-gpu-ids", int, required=False),
   Option("eval_every", int, default_value=1000, force_flag=True),
   Option("batch_size", int, default_value=32, force_flag=True),
   Option("batch_strategy", default_value="src"),
@@ -85,7 +87,8 @@ class XnmtTrainer:
       print('Start training in minibatch mode...')
       self.batcher = Batcher.select_batcher(args.batch_strategy)(args.batch_size)
       if args.input_format == "contvec":
-        self.batcher.pad_token = np.zeros(self.encoder.embedder.get_embed_dim())
+        assert self.train_corpus_source[0].nparr.shape[1] == self.input_embedder.emb_dim, "input embed dim is different size than expected"
+        self.batcher.pad_token = np.zeros(self.input_embedder.emb_dim)
       self.train_corpus_source, self.train_corpus_target = self.batcher.pack(self.train_corpus_source,
                                                                              self.train_corpus_target)
       self.dev_corpus_source, self.dev_corpus_target = self.batcher.pack(self.dev_corpus_source,
@@ -143,8 +146,9 @@ class XnmtTrainer:
 
     self.output_embedder = SimpleWordEmbedder(len(self.output_reader.vocab), self.output_word_emb_dim, self.model)
 
-    self.encoder = Encoder.from_spec(self.args.encoder_type, self.args.encoder_layers, self.encoder_hidden_dim,
-                                     self.input_embedder, self.model, self.args.residual_to_output)
+    self.encoder = Encoder.from_spec(self.args.encoder_type, self.args.encoder_layers,
+                                     self.args.input_word_embed_dim, self.encoder_hidden_dim,
+                                     self.model, self.args.residual_to_output)
 
     self.attender = StandardAttender(self.encoder_hidden_dim, self.output_state_dim, self.attender_hidden_dim,
                                      self.model)
@@ -152,10 +156,10 @@ class XnmtTrainer:
     decoder_rnn = Decoder.rnn_from_spec(self.args.decoder_type, self.args.decoder_layers, self.encoder_hidden_dim,
                                         self.output_state_dim, self.model, self.args.residual_to_output)
     self.decoder = MlpSoftmaxDecoder(self.args.decoder_layers, self.encoder_hidden_dim, self.output_state_dim,
-                                     self.output_mlp_hidden_dim,
-                                     self.output_embedder, self.model, decoder_rnn)
+                                     self.output_mlp_hidden_dim, len(self.output_reader.vocab),
+                                     self.model, decoder_rnn)
 
-    self.translator = DefaultTranslator(self.encoder, self.attender, self.decoder)
+    self.translator = DefaultTranslator(self.input_embedder, self.encoder, self.attender, self.output_embedder, self.decoder)
     self.model_params = ModelParams(self.encoder, self.attender, self.decoder, self.input_reader.vocab.i2w,
                                     self.output_reader.vocab.i2w)
 
