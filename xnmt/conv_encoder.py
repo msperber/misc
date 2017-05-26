@@ -119,17 +119,17 @@ class StridedConvEncBuilder(object):
     self.stride = (2,2)
     self.output_tensor = output_tensor
     
-    self.use_bn = False
-    self.bn_eps = 0.001
+    self.use_bn = True
+    self.bn_eps = 0.00001
+    self.bn_momentum = 0.1
     self.train = True
     
     normalInit=dy.NormalInitializer(0, 0.1)
     self.filters_layers = []
     self.bn_gamma_layers = []
     self.bn_beta_layers = []
-    self.bn_population_mean_sum_layers = []
-    self.bn_population_std_sum_layers = []
-    self.bn_population_cnt_layers = []
+    self.bn_population_running_mean_layers = []
+    self.bn_population_running_std_layers = []
     self.filters_layers = []
     for layer_i in range(num_layers):
       filters = model.add_parameters(dim=(self.filter_size_time,
@@ -140,17 +140,15 @@ class StridedConvEncBuilder(object):
       if self.use_bn:
         bn_gamma = model.add_parameters(dim=(self.num_filters, ), init=dy.ConstInitializer(1.0))
         bn_beta = model.add_parameters(dim=(self.num_filters, ), init=dy.ConstInitializer(0.0))
-        bn_population_mean_sum = np.zeros((self.num_filters, ))
-        bn_population_std_sum = np.zeros((self.num_filters, ))
-        bn_population_cnt = 0
+        bn_population_running_mean = np.zeros((self.num_filters, ))
+        bn_population_running_std = np.zeros((self.num_filters, ))
       else:
-        bn_gamma, bn_beta, bn_population_mean_sum, bn_population_std_sum, bn_population_cnt = None, None, None, None, None
+        bn_gamma, bn_beta, bn_population_running_mean, bn_population_running_std = None, None, None, None
       self.filters_layers.append(filters)
       self.bn_gamma_layers.append(bn_gamma)
       self.bn_beta_layers.append(bn_beta)
-      self.bn_population_mean_sum_layers.append(bn_population_mean_sum)
-      self.bn_population_std_sum_layers.append(bn_population_std_sum)
-      self.bn_population_cnt_layers.append(bn_population_cnt)
+      self.bn_population_running_mean_layers.append(bn_population_running_mean)
+      self.bn_population_running_std_layers.append(bn_population_running_std)
   
   def get_output_dim(self):
     conv_dim = self.freq_dim
@@ -194,32 +192,24 @@ class StridedConvEncBuilder(object):
       cnn_layer = dy.conv2d(cnn_layer, dy.parameter(filters), stride=self.stride, is_valid=True)
       # batch norm layer
       if self.use_bn:
-        param_bn_gamma = dy.parameter(self.bn_gamma_layers[layer_i])
-        param_bn_beta = dy.parameter(self.bn_beta_layers[layer_i])
-        bn_population_mean_sum = self.bn_population_mean_sum_layers[layer_i]
-        bn_population_std_sum = self.bn_population_std_sum_layers[layer_i]
-        # compute mean / std
-        cnt = self.bn_population_cnt_layers[layer_i] + 1
-        if self.train: # and cnt < 0:
-          bn_mean = dy.mean_batches(dy.mean_dim(dy.mean_dim(cnn_layer, 1),0)) # mean over batches, time and freq dimensions
-          bn_population_mean_sum += bn_mean.value()
-          self.bn_population_cnt_layers[layer_i] = cnt
+        param_bn_gamma = dy.reshape(dy.parameter(self.bn_gamma_layers[layer_i]), (1,1,self.bn_gamma_layers[layer_i].shape()[0]))
+        param_bn_beta = dy.reshape(dy.parameter(self.bn_beta_layers[layer_i]), (1,1,self.bn_gamma_layers[layer_i].shape()[0]))
+        bn_population_running_mean = self.bn_population_running_mean_layers[layer_i]
+        bn_population_running_std = self.bn_population_running_std_layers[layer_i]
+        if self.train:
+          bn_mean = dy.moment_dim(cnn_layer, [0,1], 1, True) # mean over batches, time and freq dimensions
+          neg_bn_mean_reshaped = -dy.reshape(-bn_mean, (1, 1, bn_mean.dim()[0][0]), batch_size=1)
+          bn_population_running_mean += -self.bn_momentum*bn_population_running_mean + self.bn_momentum * bn_mean.npvalue()
+#          bn_std = dy.std_dim(cnn_layer, [0,1], True) # currently unusably slow, but would be less wasteful memory-wise
+          bn_std = dy.sqrt(dy.moment_dim(dy.cadd(cnn_layer, neg_bn_mean_reshaped), [0,1], 2, True))
+          bn_population_running_std += -self.bn_momentum*bn_population_running_std + self.bn_momentum * bn_std.npvalue()
         else:
-          bn_mean = dy.inputVector(1./cnt * bn_population_mean_sum)
-        bn_per_channel = []
-        for chn_i in range(self.num_filters):
-          if self.train:
-            bn_std_i = dy.std_elems(dy.reshape(dy.pick(cnn_layer, chn_i, 2), (cnn_layer.dim()[0][0]*cnn_layer.dim()[0][1]*batch_size,)))
-            bn_population_std_sum[chn_i] += bn_std_i.value()
-          else:
-            bn_std_i = dy.inputVector(1./(cnt-1) * bn_population_std_sum[chn_i])
-          bn_chn_num = dy.pick(cnn_layer, chn_i, 2) - dy.pick(bn_mean, chn_i, 0)
-          bn_xhat = dy.cdiv(bn_chn_num, bn_std_i + self.bn_eps)
-          bn_y = dy.cmult(dy.pick(param_bn_gamma, chn_i), bn_xhat) + dy.pick(param_bn_beta, chn_i) # y = gamma * xhat + beta 
-          bn_per_channel.append(bn_y)
-          
-        bnormalized_cnn_layer = dy.concatenate(bn_per_channel, 2)
-        cnn_layer = bnormalized_cnn_layer
+          neg_bn_mean_reshaped = -dy.inputVector(bn_population_running_mean, ( (1, 1, bn_population_running_mean.shape[0]), 1))
+          bn_std = dy.inputVector(bn_population_running_std)
+        bn_numerator = dy.cadd(cnn_layer, neg_bn_mean_reshaped)
+        bn_xhat = dy.cdiv(bn_numerator, dy.reshape(bn_std, (1, 1, bn_std.dim()[0][0]), batch_size=1) + self.bn_eps)
+        bn_y = dy.cadd(dy.cmult(param_bn_gamma, bn_xhat), param_bn_beta) # y = gamma * xhat + beta
+        cnn_layer = bn_y
       cnn_layer = dy.rectify(cnn_layer) # TODO: might do maxout (see https://arxiv.org/abs/1701.02720 )
     if self.output_tensor:
       return cnn_layer
