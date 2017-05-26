@@ -33,9 +33,9 @@ class DefaultTranslator(Translator):
     self.output_embedder = output_embedder
     self.decoder = decoder
 
-  def calc_loss(self, source, target):
+  def calc_loss(self, source, target, train=False):
     embeddings = self.input_embedder.embed_sentence(source)
-    encodings = self.encoder.transduce(embeddings)
+    encodings = self.encoder.transduce(embeddings, train=train)
     self.attender.start_sentence(encodings)
     self.decoder.initialize()
     self.decoder.add_input(self.output_embedder.embed(0))  # XXX: HACK, need to initialize decoder better
@@ -73,7 +73,7 @@ class DefaultTranslator(Translator):
       source = Batcher.mark_as_batch([source])
     for sentences in source:
       embeddings = self.input_embedder.embed_sentence(source)
-      encodings = self.encoder.transduce(embeddings)
+      encodings = self.encoder.transduce(embeddings, train=False)
       self.attender.start_sentence(encodings)
       self.decoder.initialize()
       output.append(search_strategy.generate_output(self.decoder, self.attender, self.output_embedder, source_length=len(sentences)))

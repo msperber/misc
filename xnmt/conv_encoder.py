@@ -122,9 +122,8 @@ class StridedConvEncBuilder(object):
     self.use_bn = True
     self.bn_eps = 0.00001
     self.bn_momentum = 0.1
-    self.train = True
     
-    normalInit=dy.NormalInitializer(0, 0.1)
+    normalInit=dy.NormalInitializer(0, 0.0001)
     self.filters_layers = []
     self.bn_gamma_layers = []
     self.bn_beta_layers = []
@@ -169,7 +168,7 @@ class StridedConvEncBuilder(object):
   def disable_dropout(self):
     pass
 
-  def transduce(self, es):
+  def transduce(self, es, train=False):
     es_expr = es.as_tensor()
 
     sent_len = es_expr.dim()[0][0]
@@ -196,7 +195,7 @@ class StridedConvEncBuilder(object):
         param_bn_beta = dy.reshape(dy.parameter(self.bn_beta_layers[layer_i]), (1,1,self.bn_gamma_layers[layer_i].shape()[0]))
         bn_population_running_mean = self.bn_population_running_mean_layers[layer_i]
         bn_population_running_std = self.bn_population_running_std_layers[layer_i]
-        if self.train:
+        if train:
           bn_mean = dy.moment_dim(cnn_layer, [0,1], 1, True) # mean over batches, time and freq dimensions
           neg_bn_mean_reshaped = -dy.reshape(-bn_mean, (1, 1, bn_mean.dim()[0][0]), batch_size=1)
           bn_population_running_mean += -self.bn_momentum*bn_population_running_mean + self.bn_momentum * bn_mean.npvalue()
@@ -204,7 +203,7 @@ class StridedConvEncBuilder(object):
           bn_std = dy.sqrt(dy.moment_dim(dy.cadd(cnn_layer, neg_bn_mean_reshaped), [0,1], 2, True))
           bn_population_running_std += -self.bn_momentum*bn_population_running_std + self.bn_momentum * bn_std.npvalue()
         else:
-          neg_bn_mean_reshaped = -dy.inputVector(bn_population_running_mean, ( (1, 1, bn_population_running_mean.shape[0]), 1))
+          neg_bn_mean_reshaped = -dy.reshape(dy.inputVector(bn_population_running_mean), (1, 1, bn_population_running_mean.shape[0]))
           bn_std = dy.inputVector(bn_population_running_std)
         bn_numerator = dy.cadd(cnn_layer, neg_bn_mean_reshaped)
         bn_xhat = dy.cdiv(bn_numerator, dy.reshape(bn_std, (1, 1, bn_std.dim()[0][0]), batch_size=1) + self.bn_eps)

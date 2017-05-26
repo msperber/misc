@@ -11,7 +11,7 @@ class Encoder:
   A parent class representing all classes that encode inputs.
   """
 
-  def transduce(self, sentence):
+  def transduce(self, sentence, train=False):
     """
     Encode inputs into outputs.
     :param sentence: The input to be encoded. This is duck-typed, so it is the
@@ -42,8 +42,8 @@ class Encoder:
                              stridedConv,
                              lstm.ConvLSTMBuilder(layers=1, input_dim=stridedConv.get_output_dim(), model=model, chn_dim=32),
                              lstm.NetworkInNetworkBiRNNBuilder(layers, stridedConv.get_output_dim()*2, output_dim, model, dy.VanillaLSTMBuilder),
-                             pyramidal.PyramidalRNNBuilder(layers, output_dim, output_dim, model, dy.VanillaLSTMBuilder),
-                             dy.BiRNNBuilder(layers, output_dim, output_dim, model, dy.VanillaLSTMBuilder)
+#                             pyramidal.PyramidalRNNBuilder(layers, output_dim, output_dim, model, dy.VanillaLSTMBuilder),
+#                             dy.BiRNNBuilder(layers, output_dim, output_dim, model, dy.VanillaLSTMBuilder)
                              ],
                             model
                             )
@@ -61,9 +61,9 @@ class ModularEncoder(Encoder):
     self.module_list = module_list
     self.serialize_params = [model, ]
 
-  def transduce(self, sentence):
+  def transduce(self, sentence, train=False):
     for i, module in enumerate(self.module_list):
-      sentence = module.transduce(sentence)
+      sentence = module.transduce(sentence, train=train)
       if i<len(self.module_list)-1:
         if type(sentence)==dy.Expression:
           sentence = ExpressionSequence(expr_tensor=sentence)

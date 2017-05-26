@@ -92,7 +92,7 @@ class ConvLSTMBuilder:
     return self
   def add_inputs(self):
     pass
-  def transduce(self, es):
+  def transduce(self, es, train=False):
     es_expr = es.as_tensor()
     sent_len = es_expr.dim()[0][0]
     batch_size=es_expr.dim()[1]
@@ -192,7 +192,7 @@ class NetworkInNetworkBiRNNBuilder(object):
       fb.disable_dropout()
       bb.disable_dropout()
 
-  def transduce(self, es):
+  def transduce(self, es, train=False):
     """
     returns the list of output Expressions obtained by adding the given inputs
     to the current state, one by one, to both the forward and backward RNNs, 

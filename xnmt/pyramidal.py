@@ -70,7 +70,7 @@ class PyramidalRNNBuilder(object):
     bs = bb.initial_state().add_inputs(reversed(es))
     return [(f, b) for f, b in zip(fs, reversed(bs))]
 
-  def transduce(self, es):
+  def transduce(self, es, train=False):
     """
     returns the list of output Expressions obtained by adding the given inputs
     to the current state, one by one, to both the forward and backward RNNs, 
