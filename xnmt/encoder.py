@@ -26,42 +26,71 @@ class Encoder:
   def from_spec(spec, layers, input_dim, output_dim, model, residual_to_output):
     spec_lower = spec.lower()
     if spec_lower == "bilstm":
-      return BiRNNEncoder(layers, input_dim, output_dim, model)
+      return BiLSTMEncoder(layers, input_dim, output_dim, model)
     elif spec_lower == "residuallstm":
-      return residual.ResidualRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder, residual_to_output)
+      return ResidualLSTMEncoder(layers, input_dim, output_dim, model, residual_to_output)
     elif spec_lower == "residualbilstm":
-      return residual.ResidualBiRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder,
-                                                 residual_to_output)
+      return ResidualBiLSTMEncoder(layers, input_dim, output_dim, model, residual_to_output)
     elif spec_lower == "pyramidalbilstm":
-      return pyramidal.PyramidalRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder)
+      return PyramidalLSTMEncoder(layers, input_dim, output_dim, model)
     elif spec_lower == "convbilstm":
-      return conv_encoder.ConvBiRNNBuilder(layers, input_dim, output_dim, model, dy.LSTMBuilder)
+      return ConvBiRNNBuilder(layers, input_dim, output_dim, model)
     elif spec_lower == "modular":
-      stridedConv = conv_encoder.StridedConvEncBuilder(layers, input_dim, model, output_tensor=True) 
-      return ModularEncoder([
+      stridedConv = StridedConvEncoder(layers, input_dim, model) 
+      return ModularEncoder(model,
                              stridedConv,
-                             lstm.ConvLSTMBuilder(layers=1, input_dim=stridedConv.get_output_dim(), model=model, chn_dim=32),
-                             lstm.NetworkInNetworkBiRNNBuilder(layers, stridedConv.get_output_dim()*2, output_dim, model, dy.VanillaLSTMBuilder),
+                             ConvLSTMEncoder(layers=1, input_dim=stridedConv.builder.get_output_dim(), model=model, chn_dim=32),
+                             NetworkInNetworkBiLSTMEncoder(layers, stridedConv.builder.get_output_dim()*2, output_dim, model),
 #                             pyramidal.PyramidalRNNBuilder(layers, output_dim, output_dim, model, dy.VanillaLSTMBuilder),
 #                             dy.BiRNNBuilder(layers, output_dim, output_dim, model, dy.VanillaLSTMBuilder)
-                             ],
-                            model
+                            
                             )
     else:
       raise RuntimeError("Unknown encoder type {}".format(spec_lower))
 
-class BiRNNEncoder(Encoder):
+class BuilderEncoder(Encoder):
+  def transduce(self, sent):
+    return self.builder.transduce(sent)
+
+class BiLSTMEncoder(BuilderEncoder):
   def __init__(self, layers, input_dim, output_dim, model):
     self.builder = dy.BiRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder)
     self.serialize_params = [layers, input_dim, output_dim, model]
 
-  def transduce(self, sent):
-    return self.builder.transduce(sent)
+class ResidualLSTMEncoder(BuilderEncoder):
+  def __init__(self, layers, input_dim, output_dim, model, residual_to_output):
+    self.builder = residual.ResidualRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder, residual_to_output)
+    self.serialize_params = [layers, input_dim, output_dim, model, residual_to_output]
 
+class ResidualBiLSTMEncoder(BuilderEncoder):
+  def __init__(self, layers, input_dim, output_dim, model, residual_to_output):
+    self.builder = residual.ResidualBiRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder, residual_to_output)
+    self.serialize_params = [layers, input_dim, output_dim, model, residual_to_output]
+
+class PyramidalLSTMEncoder(BuilderEncoder):
+  def __init__(self, layers, input_dim, output_dim, model):
+    self.builder = pyramidal.PyramidalRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder)
+    self.serialize_params = [layers, input_dim, output_dim, model]
+
+class ConvLSTMEncoder(BuilderEncoder):
+  def __init__(self, layers, input_dim, model, chn_dim):
+    self.builder = lstm.ConvLSTMBuilder(layers, input_dim, model, chn_dim=chn_dim)
+    self.serialize_params = [layers, input_dim, model, chn_dim]
+    
+class StridedConvEncoder(BuilderEncoder):
+  def __init__(self, layers, input_dim, model):
+    self.builder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model, output_tensor=True)
+    self.serialize_params = [layers, input_dim, model]
+
+class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
+  def __init__(self, layers, input_dim, output_dim, model):
+    self.builder = lstm.NetworkInNetworkBiRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder)
+    self.serialize_params = [layers, input_dim, output_dim, model]
+  
 class ModularEncoder(Encoder):
-  def __init__(self, module_list, model):
+  def __init__(self, model, *module_list):
     self.module_list = module_list
-    self.serialize_params = [model, ]
+    self.serialize_params = [model] + list(module_list)
 
   def transduce(self, sent, train=False):
     for i, module in enumerate(self.module_list):
