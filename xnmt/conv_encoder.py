@@ -122,6 +122,7 @@ class StridedConvEncBuilder(object):
     self.use_bn = True
     self.bn_eps = 0.00001
     self.bn_momentum = 0.1
+    self.train = True
     
     normalInit=dy.NormalInitializer(0, 0.0001)
     self.filters_layers = []
@@ -168,7 +169,7 @@ class StridedConvEncBuilder(object):
   def disable_dropout(self):
     pass
 
-  def transduce(self, es, train=False):
+  def transduce(self, es):
     es_expr = es.as_tensor()
 
     sent_len = es_expr.dim()[0][0]
@@ -195,7 +196,7 @@ class StridedConvEncBuilder(object):
         param_bn_beta = dy.reshape(dy.parameter(self.bn_beta_layers[layer_i]), (1,1,self.bn_gamma_layers[layer_i].shape()[0]))
         bn_population_running_mean = self.bn_population_running_mean_layers[layer_i]
         bn_population_running_std = self.bn_population_running_std_layers[layer_i]
-        if train:
+        if self.train:
           bn_mean = dy.moment_dim(cnn_layer, [0,1], 1, True) # mean over batches, time and freq dimensions
           neg_bn_mean_reshaped = -dy.reshape(-bn_mean, (1, 1, bn_mean.dim()[0][0]), batch_size=1)
           bn_population_running_mean += -self.bn_momentum*bn_population_running_mean + self.bn_momentum * bn_mean.npvalue()

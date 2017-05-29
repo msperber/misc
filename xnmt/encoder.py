@@ -21,7 +21,7 @@ class Encoder:
       representing the encoded vectors for each word.
     """
     raise NotImplementedError('transduce must be implemented in Encoder subclasses')
-
+  
   @staticmethod
   def from_spec(spec, layers, input_dim, output_dim, model, residual_to_output):
     spec_lower = spec.lower()
