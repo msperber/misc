@@ -48,6 +48,7 @@ class Encoder(TrainTestInterface):
                              stridedConv,
                              ConvLSTMEncoder(layers=1, input_dim=stridedConv.builder.get_output_dim(), model=model, chn_dim=32),
                              NetworkInNetworkBiLSTMEncoder(layers, stridedConv.builder.get_output_dim()*2, output_dim, model),
+                             BiLSTMEncoder(layers, output_dim, output_dim, model, dropout=0.0),
 #                             pyramidal.PyramidalRNNBuilder(layers, output_dim, output_dim, model, dy.VanillaLSTMBuilder),
 #                             dy.BiRNNBuilder(layers, output_dim, output_dim, model, dy.VanillaLSTMBuilder)
                             
