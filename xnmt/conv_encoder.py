@@ -1,8 +1,8 @@
 import math
 import dynet as dy
-import numpy as np
 from residual import PseudoState
 from embedder import ExpressionSequence
+from batch_norm import ConvolutionalBatchNorm
 
 class ConvBiRNNBuilder(object):
   """
@@ -120,16 +120,11 @@ class StridedConvEncBuilder(object):
     self.output_tensor = output_tensor
     
     self.use_bn = True
-    self.bn_eps = 0.00001
-    self.bn_momentum = 0.1
     self.train = True
     
-    normalInit=dy.NormalInitializer(0, 0.0001)
+    normalInit=dy.NormalInitializer(0, 0.1)
     self.filters_layers = []
-    self.bn_gamma_layers = []
-    self.bn_beta_layers = []
-    self.bn_population_running_mean_layers = []
-    self.bn_population_running_std_layers = []
+    self.bn_layers = []
     self.filters_layers = []
     for layer_i in range(num_layers):
       filters = model.add_parameters(dim=(self.filter_size_time,
@@ -138,17 +133,8 @@ class StridedConvEncBuilder(object):
                                           self.num_filters),
                                      init=normalInit)
       if self.use_bn:
-        bn_gamma = model.add_parameters(dim=(self.num_filters, ), init=dy.ConstInitializer(1.0))
-        bn_beta = model.add_parameters(dim=(self.num_filters, ), init=dy.ConstInitializer(0.0))
-        bn_population_running_mean = np.zeros((self.num_filters, ))
-        bn_population_running_std = np.zeros((self.num_filters, ))
-      else:
-        bn_gamma, bn_beta, bn_population_running_mean, bn_population_running_std = None, None, None, None
+        self.bn_layers.append(ConvolutionalBatchNorm(model, self.num_filters))
       self.filters_layers.append(filters)
-      self.bn_gamma_layers.append(bn_gamma)
-      self.bn_beta_layers.append(bn_beta)
-      self.bn_population_running_mean_layers.append(bn_population_running_mean)
-      self.bn_population_running_std_layers.append(bn_population_running_std)
   
   def get_output_dim(self):
     conv_dim = self.freq_dim
@@ -188,28 +174,9 @@ class StridedConvEncBuilder(object):
     cnn_layer = es_chn
     for layer_i in range(len(self.filters_layers)):
       filters = self.filters_layers[layer_i]
-      # convolution layer
       cnn_layer = dy.conv2d(cnn_layer, dy.parameter(filters), stride=self.stride, is_valid=True)
-      # batch norm layer
       if self.use_bn:
-        param_bn_gamma = dy.reshape(dy.parameter(self.bn_gamma_layers[layer_i]), (1,1,self.bn_gamma_layers[layer_i].shape()[0]))
-        param_bn_beta = dy.reshape(dy.parameter(self.bn_beta_layers[layer_i]), (1,1,self.bn_gamma_layers[layer_i].shape()[0]))
-        bn_population_running_mean = self.bn_population_running_mean_layers[layer_i]
-        bn_population_running_std = self.bn_population_running_std_layers[layer_i]
-        if self.train:
-          bn_mean = dy.moment_dim(cnn_layer, [0,1], 1, True) # mean over batches, time and freq dimensions
-          neg_bn_mean_reshaped = -dy.reshape(-bn_mean, (1, 1, bn_mean.dim()[0][0]), batch_size=1)
-          bn_population_running_mean += -self.bn_momentum*bn_population_running_mean + self.bn_momentum * bn_mean.npvalue()
-#          bn_std = dy.std_dim(cnn_layer, [0,1], True) # currently unusably slow, but would be less wasteful memory-wise
-          bn_std = dy.sqrt(dy.moment_dim(dy.cadd(cnn_layer, neg_bn_mean_reshaped), [0,1], 2, True))
-          bn_population_running_std += -self.bn_momentum*bn_population_running_std + self.bn_momentum * bn_std.npvalue()
-        else:
-          neg_bn_mean_reshaped = -dy.reshape(dy.inputVector(bn_population_running_mean), (1, 1, bn_population_running_mean.shape[0]))
-          bn_std = dy.inputVector(bn_population_running_std)
-        bn_numerator = dy.cadd(cnn_layer, neg_bn_mean_reshaped)
-        bn_xhat = dy.cdiv(bn_numerator, dy.reshape(bn_std, (1, 1, bn_std.dim()[0][0]), batch_size=1) + self.bn_eps)
-        bn_y = dy.cadd(dy.cmult(param_bn_gamma, bn_xhat), param_bn_beta) # y = gamma * xhat + beta
-        cnn_layer = bn_y
+        cnn_layer = self.bn_layers[layer_i].bn_expr(cnn_layer, train=self.train)
       cnn_layer = dy.rectify(cnn_layer) # TODO: might do maxout (see https://arxiv.org/abs/1701.02720 )
     if self.output_tensor:
       return cnn_layer

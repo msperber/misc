@@ -91,6 +91,8 @@ class StridedConvEncoder(BuilderEncoder):
   def __init__(self, layers, input_dim, model):
     self.builder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model, output_tensor=True)
     self.serialize_params = [layers, input_dim, model]
+  def set_train(self, val):
+    self.builder.train = val
 
 class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
   def __init__(self, layers, input_dim, output_dim, model):
@@ -101,6 +103,8 @@ class ModularEncoder(Encoder):
   def __init__(self, model, *module_list):
     self.module_list = module_list
     self.serialize_params = [model] + list(module_list)
+  def get_train_test_components(self):
+    return self.module_list
 
   def transduce(self, sent, train=False):
     for i, module in enumerate(self.module_list):
