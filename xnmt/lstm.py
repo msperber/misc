@@ -1,6 +1,7 @@
 import dynet as dy
 import embedder
 from residual import PseudoState
+from batch_norm import BatchNorm
 
 class PythonLSTMBuilder:
   """
@@ -170,13 +171,16 @@ class NetworkInNetworkBiRNNBuilder(object):
     assert num_layers > 0
     assert hidden_dim % 2 == 0
     self.builder_layers = []
+    self.hidden_dim = hidden_dim
     f = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
     b = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
-    self.builder_layers.append((f, b))
+    bn = BatchNorm(model, hidden_dim, 2)
+    self.builder_layers.append((f, b, bn))
     for _ in xrange(num_layers - 1):
       f = rnn_builder_factory(1, hidden_dim, hidden_dim / 2, model)
       b = rnn_builder_factory(1, hidden_dim, hidden_dim / 2, model)
-      self.builder_layers.append((f, b))
+      bn = BatchNorm(model, hidden_dim, 2)
+      self.builder_layers.append((f, b, bn))
     self.lintransf_layers = []
     for _ in xrange(num_layers):
       self.lintransf_layers.append(model.add_parameters(dim=(hidden_dim, hidden_dim)))
@@ -184,11 +188,11 @@ class NetworkInNetworkBiRNNBuilder(object):
   def whoami(self): return "PyramidalRNNBuilder"
 
   def set_dropout(self, p):
-    for (fb, bb) in self.builder_layers:
+    for (fb, bb, bn) in self.builder_layers:
       fb.set_dropout(p)
       bb.set_dropout(p)
   def disable_dropout(self):
-    for (fb, bb) in self.builder_layers:
+    for (fb, bb, bn) in self.builder_layers:
       fb.disable_dropout()
       bb.disable_dropout()
 
@@ -201,7 +205,8 @@ class NetworkInNetworkBiRNNBuilder(object):
     @param es: a list of Expression
 
     """
-    for layer_i, (fb, bb) in enumerate(self.builder_layers):
+    batch_size = es[0].dim()[1]
+    for layer_i, (fb, bb, bn) in enumerate(self.builder_layers):
       fs = fb.initial_state().transduce(es)
       bs = bb.initial_state().transduce(reversed(es))
       lintransf_param = dy.parameter(self.lintransf_layers[layer_i])
@@ -210,9 +215,7 @@ class NetworkInNetworkBiRNNBuilder(object):
         concat = dy.concatenate([f, b])
         proj = lintransf_param * concat
         projections.append(proj)
-      # TODO: insert batch normalization here
-      # - concat projections to a tensor of size seq_len x hidden_dim x batch_size
-      # - compute means and variances over seq_len x batchsize
+      bn.bn_expr(dy.concatenate(map(lambda x: dy.reshape(x, (1,self.hidden_dim), batch_size=batch_size), projections), 0), train=True) # TODO
       es = []
       for proj in projections:
         nonlin = dy.rectify(proj)
