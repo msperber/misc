@@ -5,8 +5,9 @@ import pyramidal
 import conv_encoder
 from embedder import ExpressionSequence
 import lstm
+from translator import TrainTestInterface
 
-class Encoder:
+class Encoder(TrainTestInterface):
   """
   A parent class representing all classes that encode inputs.
   """
@@ -32,7 +33,7 @@ class Encoder:
     """
     spec_lower = spec.lower()
     if spec_lower == "bilstm":
-      return BiLSTMEncoder(layers, input_dim, output_dim, model)
+      return BiLSTMEncoder(layers, input_dim, output_dim, model, dropout=0.0)
     elif spec_lower == "residuallstm":
       return ResidualLSTMEncoder(layers, input_dim, output_dim, model, residual_to_output)
     elif spec_lower == "residualbilstm":
@@ -59,9 +60,12 @@ class BuilderEncoder(Encoder):
     return self.builder.transduce(sent)
 
 class BiLSTMEncoder(BuilderEncoder):
-  def __init__(self, layers, input_dim, output_dim, model):
+  def __init__(self, layers, input_dim, output_dim, model, dropout):
     self.builder = dy.BiRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder)
-    self.serialize_params = [layers, input_dim, output_dim, model]
+    self.serialize_params = [layers, input_dim, output_dim, model, dropout]
+    self.dropout = dropout
+  def set_train(self, val):
+    self.builder.set_dropout(self.dropout if val else 0.0)
 
 class ResidualLSTMEncoder(BuilderEncoder):
   def __init__(self, layers, input_dim, output_dim, model, residual_to_output):
