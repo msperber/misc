@@ -1,8 +1,7 @@
 import math
 import dynet as dy
 from residual import PseudoState
-from embedder import ExpressionSequence
-from batch_norm import ConvolutionalBatchNorm
+from batch_norm import BatchNorm
 
 class ConvBiRNNBuilder(object):
   """
@@ -133,7 +132,7 @@ class StridedConvEncBuilder(object):
                                           self.num_filters),
                                      init=normalInit)
       if self.use_bn:
-        self.bn_layers.append(ConvolutionalBatchNorm(model, self.num_filters))
+        self.bn_layers.append(BatchNorm(model, self.num_filters, 3))
       self.filters_layers.append(filters)
   
   def get_output_dim(self):
