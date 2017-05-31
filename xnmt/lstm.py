@@ -184,6 +184,7 @@ class NetworkInNetworkBiRNNBuilder(object):
     self.lintransf_layers = []
     for _ in xrange(num_layers):
       self.lintransf_layers.append(model.add_parameters(dim=(hidden_dim, hidden_dim)))
+    self.train = True
 
   def whoami(self): return "PyramidalRNNBuilder"
 
@@ -215,7 +216,9 @@ class NetworkInNetworkBiRNNBuilder(object):
         concat = dy.concatenate([f, b])
         proj = lintransf_param * concat
         projections.append(proj)
-      bn.bn_expr(dy.concatenate(map(lambda x: dy.reshape(x, (1,self.hidden_dim), batch_size=batch_size), projections), 0), train=True) # TODO
+      bn.bn_expr(dy.concatenate([dy.reshape(x, (1,self.hidden_dim), batch_size=batch_size) for x in projections], 
+                                0), 
+                 train=self.train)
       es = []
       for proj in projections:
         nonlin = dy.rectify(proj)

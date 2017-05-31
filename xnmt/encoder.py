@@ -99,6 +99,8 @@ class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
   def __init__(self, layers, input_dim, output_dim, model):
     self.builder = lstm.NetworkInNetworkBiRNNBuilder(layers, input_dim, output_dim, model, dy.VanillaLSTMBuilder)
     self.serialize_params = [layers, input_dim, output_dim, model]
+  def set_train(self, val):
+    self.builder.train = val
   
 class ModularEncoder(Encoder):
   def __init__(self, model, *module_list):

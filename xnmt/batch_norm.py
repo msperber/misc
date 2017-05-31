@@ -13,6 +13,7 @@ class BatchNorm(object):
     self.bn_beta = model.add_parameters(dim=self.get_normalizer_dimensionality(), init=dy.ConstInitializer(0.0))
     self.bn_population_running_mean = np.zeros((hidden_dim, ))
     self.bn_population_running_std = np.ones((hidden_dim, ))
+    
   def get_normalizer_dimensionality(self):
     if self.num_dim == 1:
       return (self.hidden_dim,)
@@ -22,6 +23,7 @@ class BatchNorm(object):
       return (1, 1, self.hidden_dim,)
     else:
       raise NotImplementedError("BatchNorm not implemented for num_dim > 3")
+    
   def get_stat_dimensions(self):
     return range(self.num_dim-1)
 
