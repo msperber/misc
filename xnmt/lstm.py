@@ -174,6 +174,7 @@ class NetworkInNetworkBiRNNBuilder(object):
     self.hidden_dim = hidden_dim
     f = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
     b = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
+    self.use_bn = True
     bn = BatchNorm(model, hidden_dim, 2)
     self.builder_layers.append((f, b, bn))
     for _ in xrange(num_layers - 1):
@@ -216,13 +217,17 @@ class NetworkInNetworkBiRNNBuilder(object):
         concat = dy.concatenate([f, b])
         proj = lintransf_param * concat
         projections.append(proj)
-      bn.bn_expr(dy.concatenate([dy.reshape(x, (1,self.hidden_dim), batch_size=batch_size) for x in projections], 
-                                0), 
-                 train=self.train)
-      es = []
-      for proj in projections:
-        nonlin = dy.rectify(proj)
-        es.append(nonlin)
+      if self.use_bn:
+        bn_layer = bn.bn_expr(dy.concatenate([dy.reshape(x, (1,self.hidden_dim), batch_size=batch_size) for x in projections], 
+                                  0), 
+                   train=self.train)
+        nonlin = dy.rectify(bn_layer)
+        es = [dy.pick(nonlin, i) for i in range(nonlin.dim()[0][0])]
+      else:
+        es = []
+        for proj in projections:
+          nonlin = dy.rectify(proj)
+          es.append(nonlin)
     return es
 
   def initial_state(self):
