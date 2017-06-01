@@ -41,6 +41,7 @@ speech:
         input_dim: 240
         chn_dim: 3
         num_filters: 32
+        batch_norm: True
       - type: ConvBiLSTM
         layers: 1
         chn_dim: 32
@@ -49,6 +50,7 @@ speech:
         layers: 2
         input_dim: 1216
         output_dim: 512
+        batch_norm: True
       - type: BiLSTM
         layers: 1
         input_dim: 512

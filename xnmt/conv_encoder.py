@@ -97,7 +97,8 @@ class StridedConvEncBuilder(object):
   Implements several CNN layers, each with stride (2,2), resulting in downsampling by 2**(num_layers-1) in both dimensions.
   """
   
-  def __init__(self, num_layers, input_dim, model, chn_dim=3, num_filters=32, output_tensor=False):
+  def __init__(self, num_layers, input_dim, model, chn_dim=3, num_filters=32, 
+               output_tensor=False, batch_norm=False):
     """
     :param num_layers: encoder depth
     :param input_dim: size of the inputs, before factoring out the channels.
@@ -119,7 +120,7 @@ class StridedConvEncBuilder(object):
     self.stride = (2,2)
     self.output_tensor = output_tensor
     
-    self.use_bn = True
+    self.use_bn = batch_norm
     self.train = True
     
     normalInit=dy.NormalInitializer(0, 0.1)

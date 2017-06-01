@@ -160,7 +160,8 @@ class NetworkInNetworkBiRNNBuilder(object):
   Builder for NiN-interleaved RNNs that delegates to regular RNNs and wires them together.
   See http://iamaaditya.github.io/2016/03/one-by-one-convolution/
   """
-  def __init__(self, num_layers, input_dim, hidden_dim, model, rnn_builder_factory):
+  def __init__(self, num_layers, input_dim, hidden_dim, model, rnn_builder_factory,
+               batch_norm=False):
     """
     @param num_layers: depth of the network
     @param input_dim: size of the inputs
@@ -174,13 +175,13 @@ class NetworkInNetworkBiRNNBuilder(object):
     self.hidden_dim = hidden_dim
     f = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
     b = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
-    self.use_bn = True
+    self.use_bn = batch_norm
     bn = BatchNorm(model, hidden_dim, 2)
     self.builder_layers.append((f, b, bn))
     for _ in xrange(num_layers - 1):
       f = rnn_builder_factory(1, hidden_dim, hidden_dim / 2, model)
       b = rnn_builder_factory(1, hidden_dim, hidden_dim / 2, model)
-      bn = BatchNorm(model, hidden_dim, 2)
+      bn = BatchNorm(model, hidden_dim, 2) if batch_norm else None
       self.builder_layers.append((f, b, bn))
     self.lintransf_layers = []
     for _ in xrange(num_layers):

@@ -102,14 +102,16 @@ class ConvLSTMEncoder(BuilderEncoder):
     
 class StridedConvEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
-    params = self.use_params(encoder_spec, ["layers", "input_dim", model, "chn_dim", "num_filters", "output_tensor"])
+    params = self.use_params(encoder_spec, ["layers", "input_dim", model, "chn_dim", 
+                                            "num_filters", "output_tensor", "batch_norm"])
     self.builder = conv_encoder.StridedConvEncBuilder(*params)
   def set_train(self, val):
     self.builder.train = val
 
 class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
-    params = self.use_params(encoder_spec, ["layers", "input_dim", "output_dim", model, dy.VanillaLSTMBuilder])
+    params = self.use_params(encoder_spec, ["layers", "input_dim", "output_dim", model, 
+                                            dy.VanillaLSTMBuilder, "batch_norm"])
     self.builder = lstm.NetworkInNetworkBiRNNBuilder(*params)
   def set_train(self, val):
     self.builder.train = val
