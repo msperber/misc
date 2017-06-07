@@ -4,7 +4,6 @@ from collections import defaultdict, Counter
 import math
 import re
 
-
 class Evaluator(object):
     """
   A class to evaluate the quality of output.
