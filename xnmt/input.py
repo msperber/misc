@@ -43,18 +43,18 @@ class ArrayInput(Input):
     return self.nparr.__getitem__(key)
   def get_padded_sent(self, token, pad_len):
     if pad_len>0:
-      self.nparr = np.append(self.nparr, np.repeat(token.reshape(1,len(token)), pad_len, axis=0), axis=0)
+      self.nparr = np.append(self.nparr, np.repeat(token.reshape((1,) + token.shape), pad_len, axis=0), axis=0)
     return self
   def get_array(self):
     return self.nparr
 
 class InputReader:
   @staticmethod
-  def create_input_reader(file_format, vocab=None):
+  def create_input_reader(file_format, vocab=None, token_dim=None):
     if file_format == "text":
       return PlainTextReader(vocab)
     elif file_format == "contvec":
-      return ContVecReader()
+      return ContVecReader(token_dim)
     else:
       raise RuntimeError("Unkonwn input type {}".format(file_format))
 
@@ -93,25 +93,17 @@ class ContVecReader(InputReader):
   Sentences should be named arr_0, arr_1, ... (=np default for unnamed archives).
   We can index them as sents[sent_no][word_ind,feat_ind]
   """
-  def __init__(self):
+  def __init__(self, token_dim=None):
     self.vocab = Vocab()
+    self.token_dim = token_dim
 
   def read_file(self, filename):
-    if filename.endswith(".npz"):
-      npzFile = np.load(filename)
-      npzKeys = sorted(npzFile.files, key=lambda x: int(x.split('_')[1]))
-      sents = map(lambda f:ArrayInput(npzFile[f]), npzKeys)
-      npzFile.close()
-      return sents
-    else:
-      sents = []
-      with open(filename) as f:
-        for line in f:
-          words = line.strip().split(";")
-#          sentence = ArraySentence(np.asarray([map(lambda x: float(x), word.split()) for word in words]))
-          sent = SimpleSentenceInput([np.asarray([float(x) for x in word.split()]) for word in words])
-          sents.append(sent)
-      return sents
+    npzFile = np.load(filename)
+    npzKeys = sorted(npzFile.files, key=lambda x: int(x.split('_')[1]))
+    conditional_reshape = lambda x: x.reshape((x.shape[0],) + self.token_dim) if self.token_dim else x
+    sents = map(lambda f:ArrayInput(conditional_reshape(npzFile[f])), npzKeys)
+    npzFile.close()
+    return sents
 
   def freeze(self):
     pass

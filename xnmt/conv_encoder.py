@@ -177,8 +177,11 @@ class StridedConvEncBuilder(object):
       es_expr = dy.concatenate([es_expr, dy.zeroes((pad_size, self.freq_dim * self.chn_dim), batch_size=es_expr.dim()[1])])
       sent_len += pad_size
 
-    # loop over layers    
-    es_chn = dy.reshape(es_expr, (sent_len, self.freq_dim, self.chn_dim), batch_size=batch_size)
+    # loop over layers
+    if es_expr.dim() == ((sent_len, self.freq_dim, self.chn_dim), batch_size):
+      es_chn = es_expr
+    else:
+      es_chn = dy.reshape(es_expr, (sent_len, self.freq_dim, self.chn_dim), batch_size=batch_size)
     cnn_layer = es_chn
     for layer_i in range(len(self.filters_layers)):
       filters = self.filters_layers[layer_i]

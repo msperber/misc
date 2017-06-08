@@ -14,7 +14,7 @@ from translator import *
 from model_params import *
 from loss_tracker import *
 from serializer import *
-from options import Option, OptionParser, general_options
+from options import Option, OptionParser, general_options, IntTuple
 
 '''
 This will be the main class to perform training.
@@ -38,7 +38,7 @@ options = [
   Option("output_vocab", default_value="", help_str="Path of fixed output vocab file"),
   Option("input_format", default_value="text", help_str="Format of input data: text/contvec"),
   Option("default_layer_dim", int, default_value=512, help_str="Default size to use for layers if not otherwise overridden"),
-  Option("input_word_embed_dim", int, required=False),
+  Option("input_word_embed_dim", IntTuple, required=False),
   Option("output_word_embed_dim", int, required=False),
   Option("output_state_dim", int, required=False),
   Option("output_mlp_hidden_dim", int, required=False),
@@ -91,7 +91,7 @@ class XnmtTrainer:
       print('Start training in minibatch mode...')
       self.batcher = Batcher.select_batcher(args.batch_strategy)(args.batch_size)
       if args.input_format == "contvec":
-        assert self.train_src[0].nparr.shape[1] == self.input_embedder.emb_dim, "input embed dim is different size than expected"
+        assert self.train_src[0].nparr.shape[1:] == self.input_embedder.emb_dim, "input embed dim is different size than expected"
         self.batcher.pad_token = np.zeros(self.input_embedder.emb_dim)
       self.train_src, self.train_trg = self.batcher.pack(self.train_src, self.train_trg)
       self.dev_src, self.dev_trg = self.batcher.pack(self.dev_src, self.dev_trg)
@@ -110,7 +110,7 @@ class XnmtTrainer:
       self.output_embedder = self.model_params.output_embedder
       self.translator = DefaultTranslator(self.input_embedder, self.encoder, self.attender, 
                                           self.output_embedder, self.decoder)
-      self.input_reader = InputReader.create_input_reader(self.args.input_format, src_vocab)
+      self.input_reader = InputReader.create_input_reader(self.args.input_format, src_vocab, self.args.input_word_embed_dim)
       self.output_reader = InputReader.create_input_reader("text", trg_vocab)
       self.input_reader.freeze()
       self.output_reader.freeze()
@@ -125,7 +125,7 @@ class XnmtTrainer:
       input_vocab = Vocab(vocab_file=self.args.input_vocab)
     if self.args.output_vocab:
       output_vocab = Vocab(vocab_file=self.args.output_vocab)
-    self.input_reader = InputReader.create_input_reader(self.args.input_format, input_vocab)
+    self.input_reader = InputReader.create_input_reader(self.args.input_format, input_vocab, self.args.input_word_embed_dim)
     self.output_reader = InputReader.create_input_reader("text", output_vocab)
     if self.args.input_vocab:
       self.input_reader.freeze()

@@ -137,8 +137,6 @@ class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
 class ModularEncoder(Encoder):
   def __init__(self, encoder_spec, model):
     self.modules = []
-    if encoder_spec.get("input_dim", None) != encoder_spec["modules"][0].get("input_dim"):
-      raise RuntimeError("Mismatching input dimensions of first module: %s != %s".format(encoder_spec.get("input_dim", None), encoder_spec["modules"][0].get("input_dim")))
     for module_spec in encoder_spec["modules"]:
       module_spec = dict(module_spec)
       module_spec["default_layer_dim"] = encoder_spec["default_layer_dim"]

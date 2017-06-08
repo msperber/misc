@@ -28,6 +28,14 @@ class Option:
 
 class Args: pass
 
+class IntTuple(tuple):
+  def __new__ (cls, a):
+    if type(a)==str: a = int(a)
+    if type(a)==int: a = (a,)
+    return super(IntTuple, cls).__new__(cls, tuple(map(int, a)))
+  def __init__(self, val):
+    self.serialize_params = tuple(self)
+    
 
 class OptionParser:
   def __init__(self):
