@@ -41,22 +41,23 @@ speech:
       type: modular
       modules:
       - type: StridedConv
-        layers: 2
-#        output_tensor: True
-        output_tensor: False
+        layers: 3
+        output_tensor: True
         input_dim: 240
         chn_dim: 3
         num_filters: 32
         batch_norm: True
-#      - type: ConvBiLSTM
-#        layers: 1
-#        chn_dim: 32
-#        input_dim: 608
+        stride:
+        - (2,2)
+        - (2,2)
+        - (2,1)
+      - type: ConvBiLSTM
+        layers: 1
+        chn_dim: 32
+        input_dim: 544
       - type: NiNBiLSTM
         layers: 2
-        input_dim: 608
-#        input_dim: 1216
-        output_dim: 512
+        input_dim: 1088
         batch_norm: True
       - type: BiLSTM
         layers: 1

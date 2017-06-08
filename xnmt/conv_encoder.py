@@ -98,7 +98,7 @@ class StridedConvEncBuilder(object):
   """
   
   def __init__(self, num_layers, input_dim, model, chn_dim=3, num_filters=32, 
-               output_tensor=False, batch_norm=False):
+               output_tensor=False, batch_norm=False, stride=(2,2)):
     """
     :param num_layers: encoder depth
     :param input_dim: size of the inputs, before factoring out the channels.
@@ -117,7 +117,7 @@ class StridedConvEncBuilder(object):
     self.num_filters = num_filters
     self.filter_size_time = 3
     self.filter_size_freq = 3
-    self.stride = (2,2)
+    self.stride = stride
     self.output_tensor = output_tensor
     
     self.use_bn = batch_norm
@@ -139,14 +139,21 @@ class StridedConvEncBuilder(object):
   
   def get_output_dim(self):
     conv_dim = self.freq_dim
-    for _ in range(self.num_layers):
-      conv_dim = int(math.ceil(float(conv_dim - self.filter_size_freq + 1) / float(self.stride[1])))
+    for layer_i in range(self.num_layers):
+      conv_dim = int(math.ceil(float(conv_dim - self.filter_size_freq + 1) / float(self.get_stride_for_layer(layer_i)[1])))
     return conv_dim * self.num_filters
+  
+  def get_stride_for_layer(self, layer_i):
+    if type(self.stride)==tuple: return self.stride
+    else:
+      assert type(self.stride)==list
+      return self.stride[layer_i]
+      
   
   def get_output_len(self, input_len):
     conv_dim = input_len
-    for _ in range(self.num_layers):
-      conv_dim = int(math.ceil(float(conv_dim - self.filter_size_time + 1) / float(self.stride[0])))
+    for layer_i in range(self.num_layers):
+      conv_dim = int(math.ceil(float(conv_dim - self.filter_size_time + 1) / float(self.get_stride_for_layer(layer_i)[0])))
     return conv_dim
 
   def whoami(self): return "StridedConvEncBuilder"
@@ -175,7 +182,7 @@ class StridedConvEncBuilder(object):
     cnn_layer = es_chn
     for layer_i in range(len(self.filters_layers)):
       filters = self.filters_layers[layer_i]
-      cnn_layer = dy.conv2d(cnn_layer, dy.parameter(filters), stride=self.stride, is_valid=True)
+      cnn_layer = dy.conv2d(cnn_layer, dy.parameter(filters), stride=self.get_stride_for_layer(layer_i), is_valid=True)
       if self.use_bn:
         cnn_layer = self.bn_layers[layer_i].bn_expr(cnn_layer, train=self.train)
       cnn_layer = dy.rectify(cnn_layer) # TODO: might do maxout (see https://arxiv.org/abs/1701.02720 )

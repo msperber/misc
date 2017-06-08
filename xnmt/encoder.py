@@ -76,6 +76,8 @@ class BuilderEncoder(Encoder):
             raise RuntimeError("Missing encoder param %s in encoder %s" % (param, encoder_spec["type"]))
         else:
           val = encoder_spec[param]
+          if type(val)==list:
+            val = map(eval, val)
         ret.append(val)
         print("  %s: %s" % (param, val))
       else:
@@ -117,7 +119,8 @@ class ConvLSTMEncoder(BuilderEncoder):
 class StridedConvEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
     params = self.use_params(encoder_spec, ["layers", "input_dim", model, "chn_dim", 
-                                            "num_filters", "output_tensor", "batch_norm"])
+                                            "num_filters", "output_tensor", "batch_norm",
+                                            "stride"])
     self.builder = conv_encoder.StridedConvEncBuilder(*params)
   def set_train(self, val):
     self.builder.train = val
