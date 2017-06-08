@@ -102,14 +102,10 @@ class ContVecReader(InputReader):
   def read_file(self, filename, max_num=None):
     npzFile = np.load(filename)
     npzKeys = sorted(npzFile.files, key=lambda x: int(x.split('_')[1]))
-<<<<<<< HEAD
     conditional_reshape = lambda x: x.reshape((x.shape[0],) + self.token_dim) if self.token_dim else x
-    sents = map(lambda f:ArrayInput(conditional_reshape(npzFile[f])), npzKeys)
-=======
     if max_num is not None and max_num < len(npzKeys):
       npzKeys = npzKeys[:max_num]
-    sents = map(lambda f:ArrayInput(npzFile[f]), npzKeys)
->>>>>>> max-len-test
+    sents = map(lambda f:ArrayInput(conditional_reshape(npzFile[f])), npzKeys)
     npzFile.close()
     return sents
 
