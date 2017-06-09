@@ -1,7 +1,7 @@
 import dynet as dy
-import embedder
 from residual import PseudoState
 from batch_norm import BatchNorm
+import numpy as np
 
 class PythonLSTMBuilder:
   """
@@ -161,7 +161,7 @@ class NetworkInNetworkBiRNNBuilder(object):
   See http://iamaaditya.github.io/2016/03/one-by-one-convolution/
   """
   def __init__(self, num_layers, input_dim, hidden_dim, model, rnn_builder_factory,
-               batch_norm=False):
+               batch_norm=False, stride=1):
     """
     @param num_layers: depth of the network
     @param input_dim: size of the inputs
@@ -173,6 +173,7 @@ class NetworkInNetworkBiRNNBuilder(object):
     assert hidden_dim % 2 == 0
     self.builder_layers = []
     self.hidden_dim = hidden_dim
+    self.stride=stride
     f = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
     b = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
     self.use_bn = batch_norm
@@ -185,10 +186,10 @@ class NetworkInNetworkBiRNNBuilder(object):
       self.builder_layers.append((f, b, bn))
     self.lintransf_layers = []
     for _ in xrange(num_layers):
-      self.lintransf_layers.append(model.add_parameters(dim=(hidden_dim, hidden_dim)))
+      self.lintransf_layers.append(model.add_parameters(dim=(hidden_dim, hidden_dim*stride)))
     self.train = True
 
-  def whoami(self): return "PyramidalRNNBuilder"
+  def whoami(self): return "NetworkInNetworkBiRNNBuilder"
 
   def set_dropout(self, p):
     for (fb, bb, bn) in self.builder_layers:
@@ -214,8 +215,14 @@ class NetworkInNetworkBiRNNBuilder(object):
       bs = bb.initial_state().transduce(reversed(es))
       lintransf_param = dy.parameter(self.lintransf_layers[layer_i])
       projections = []
-      for f, b in zip(fs, reversed(bs)):
-        concat = dy.concatenate([f, b])
+      if len(fs)%self.stride!=0:
+        zero_pad = dy.inputTensor(np.zeros(fs[0].dim()[0]+(fs[0].dim()[1],)), batched=True)
+        fs.extend([zero_pad] * (self.stride-len(fs)%self.stride))
+        bs = [zero_pad] * (self.stride-len(fs)%self.stride) + bs
+      for pos in range(0, len(fs), self.stride):
+        concat = dy.concatenate(fs[pos:pos+self.stride] + bs[-pos-self.stride:len(bs)-pos])
+#      for f, b in zip(fs, reversed(bs)):
+#        concat = dy.concatenate([f, b])
         proj = lintransf_param * concat
         projections.append(proj)
       if self.use_bn:
