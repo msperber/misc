@@ -139,7 +139,7 @@ class XnmtTrainer:
     for opt in ["input_word_embed_dim", "output_word_embed_dim", "output_state_dim",
                 "output_mlp_hidden_dim", "attender_hidden_dim", "attention_context_dim"]:
       if getattr(self.args, opt) is None:
-        setattr(self.args, opt, self.args.default_layer_dim)
+        setattr(self.args, opt, (self.args.default_layer_dim,) if opt=="input_word_embed_dim" else self.args.default_layer_dim)
     if getattr(self.args, "encoder") is None:
       self.args.encoder = {}
     self.args.encoder["default_layer_dim"] = self.args.default_layer_dim

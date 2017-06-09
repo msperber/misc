@@ -22,11 +22,11 @@ defaults:
 debug-config-1layer:
   train:
     encoder:
-      layers: 2
+      layers: 1
 
 debug-config-2layers:
-  train:
-    decoder_layers: 2
+    encoder:
+      layers: 2
 
 debug-config-2layers-finetune:
   train:

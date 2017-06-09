@@ -98,6 +98,9 @@ class SimpleWordEmbedder(Embedder):
 
   def __init__(self, vocab_size, emb_dim, model):
     self.vocab_size = vocab_size
+    if type(emb_dim)==tuple:
+      assert len(emb_dim)==1
+      emb_dim = emb_dim[0]
     self.emb_dim = emb_dim
     self.embeddings = model.add_lookup_parameters((vocab_size, emb_dim))
     self.serialize_params = [vocab_size, emb_dim, model]
