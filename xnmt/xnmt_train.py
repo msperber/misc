@@ -15,6 +15,7 @@ from model_params import *
 from loss_tracker import *
 from serializer import *
 from options import Option, OptionParser, general_options, IntTuple
+from operator import mul
 
 '''
 This will be the main class to perform training.
@@ -142,7 +143,8 @@ class XnmtTrainer:
     if getattr(self.args, "encoder") is None:
       self.args.encoder = {}
     self.args.encoder["default_layer_dim"] = self.args.default_layer_dim
-    if self.args.encoder.get("input_dim", None) is None: self.args.encoder["input_dim"] = self.args.input_word_embed_dim
+    if self.args.encoder.get("input_dim", None) is None: self.args.encoder["input_dim"] = reduce(mul, self.args.input_word_embed_dim, 1)
+    
 
     self.input_word_emb_dim = self.args.input_word_embed_dim
     self.output_word_emb_dim = self.args.output_word_embed_dim
