@@ -128,7 +128,8 @@ class StridedConvEncoder(BuilderEncoder):
 class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
     params = self.use_params(encoder_spec, ["layers", "input_dim", "hidden_dim", model, 
-                                            dy.VanillaLSTMBuilder, "batch_norm", "stride"],
+                                            dy.VanillaLSTMBuilder, "batch_norm", "stride",
+                                            "num_projections"],
                              map_to_default_layer_dim=["hidden_dim"])
     self.builder = lstm.NetworkInNetworkBiRNNBuilder(*params)
   def set_train(self, val):

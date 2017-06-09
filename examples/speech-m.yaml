@@ -61,7 +61,8 @@ speech:
         layers: 2
         input_dim: 1088
         batch_norm: True
-        stride: 2
+        stride: 1
+        num_projections: 1
       - type: BiLSTM
         layers: 1
         input_dim: 512
