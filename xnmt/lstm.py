@@ -255,12 +255,12 @@ class NetworkInNetworkBiRNNBuilder(object):
       bn_layer = bn.bn_expr(dy.concatenate([dy.reshape(x, (1,self.hidden_dim), batch_size=batch_size) for x in projections], 
                                 0), 
                  train=self.train)
-      nonlin = dy.rectify(bn_layer)
+      nonlin = self.apply_nonlinearity(bn_layer)
       es = [dy.pick(nonlin, i) for i in range(nonlin.dim()[0][0])]
     else:
       es = []
       for proj in projections:
-        nonlin = dy.rectify(proj)
+        nonlin = self.apply_nonlinearity(proj)
         es.append(nonlin)
     return es
   def apply_nonlinearity(self, expr):
