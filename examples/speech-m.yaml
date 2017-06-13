@@ -49,6 +49,7 @@ speech:
         chn_dim: 3
         num_filters: 32
         batch_norm: True
+        nonlinearity: maxout
         stride:
         - (2,2)
         - (2,2)

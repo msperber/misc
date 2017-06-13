@@ -120,7 +120,7 @@ class StridedConvEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
     params = self.use_params(encoder_spec, ["layers", "input_dim", model, "chn_dim", 
                                             "num_filters", "output_tensor", "batch_norm",
-                                            "stride"])
+                                            "stride", "nonlinearity"])
     self.builder = conv_encoder.StridedConvEncBuilder(*params)
   def set_train(self, val):
     self.builder.train = val

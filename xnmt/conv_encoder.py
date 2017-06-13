@@ -98,7 +98,7 @@ class StridedConvEncBuilder(object):
   """
   
   def __init__(self, num_layers, input_dim, model, chn_dim=3, num_filters=32, 
-               output_tensor=False, batch_norm=False, stride=(2,2)):
+               output_tensor=False, batch_norm=False, stride=(2,2), nonlinearity="relu"):
     """
     :param num_layers: encoder depth
     :param input_dim: size of the inputs, before factoring out the channels.
@@ -107,6 +107,7 @@ class StridedConvEncBuilder(object):
     :param chn_dim: channel dimension
     :param num_filters
     :param output_tensor: if set, the output is directly given as a 3d-tensor, rather than converted to a list of vector expressions
+    :param nonlinearity: "rely" / "maxout" / None
     """
     assert num_layers > 0
     assert input_dim % chn_dim == 0
@@ -119,23 +120,34 @@ class StridedConvEncBuilder(object):
     self.filter_size_freq = 3
     self.stride = stride
     self.output_tensor = output_tensor
+    self.nonlinearity = nonlinearity
     
     self.use_bn = batch_norm
     self.train = True
     
     normalInit=dy.NormalInitializer(0, 0.1)
-    self.filters_layers = []
     self.bn_layers = []
     self.filters_layers = []
+    self.bn_alt_layers = []
+    self.filters_alt_layers = []
     for layer_i in range(num_layers):
       filters = model.add_parameters(dim=(self.filter_size_time,
                                           self.filter_size_freq,
                                           self.chn_dim if layer_i==0 else self.num_filters,
                                           self.num_filters),
                                      init=normalInit)
+      if nonlinearity=="maxout":
+        filters_alt = model.add_parameters(dim=(self.filter_size_time,
+                                          self.filter_size_freq,
+                                          self.chn_dim if layer_i==0 else self.num_filters,
+                                          self.num_filters),
+                                     init=normalInit)
       if self.use_bn:
         self.bn_layers.append(BatchNorm(model, self.num_filters, 3))
+        if nonlinearity=="maxout":
+          self.bn_alt_layers.append(BatchNorm(model, self.num_filters, 3))
       self.filters_layers.append(filters)
+      if nonlinearity=="maxout": self.filters_alt_layers.append(filters_alt)
   
   def get_output_dim(self):
     conv_dim = self.freq_dim
@@ -184,11 +196,22 @@ class StridedConvEncBuilder(object):
       es_chn = dy.reshape(es_expr, (sent_len, self.freq_dim, self.chn_dim), batch_size=batch_size)
     cnn_layer = es_chn
     for layer_i in range(len(self.filters_layers)):
+      cnn_layer_prev = cnn_layer
       filters = self.filters_layers[layer_i]
       cnn_layer = dy.conv2d(cnn_layer, dy.parameter(filters), stride=self.get_stride_for_layer(layer_i), is_valid=True)
+      if self.nonlinearity=="maxout":
+        filters_alt = self.filters_alt_layers[layer_i]
+        cnn_layer_alt = dy.conv2d(cnn_layer_prev, dy.parameter(filters_alt), stride=self.get_stride_for_layer(layer_i), is_valid=True)
       if self.use_bn:
         cnn_layer = self.bn_layers[layer_i].bn_expr(cnn_layer, train=self.train)
-      cnn_layer = dy.rectify(cnn_layer) # TODO: might do maxout (see https://arxiv.org/abs/1701.02720 )
+        if self.nonlinearity=="maxout":
+          cnn_layer_alt = self.bn_alt_layers[layer_i].bn_expr(cnn_layer_alt, train=self.train)
+      if self.nonlinearity=="relu":
+        cnn_layer = dy.rectify(cnn_layer) # TODO: might do maxout (see https://arxiv.org/abs/1701.02720 )
+      elif self.nonlinearity=="maxout":
+        cnn_layer = dy.bmax(cnn_layer, cnn_layer_alt)
+      elif self.nonlinearity is not None:
+        raise RuntimeError("unknown nonlinearity: %s" % self.nonlinearity)
     if self.output_tensor:
       return cnn_layer
     else:
