@@ -63,6 +63,8 @@ speech:
         batch_norm: True
         stride: 1
         num_projections: 1
+        projection_enabled: True
+        nonlinearity: relu
       - type: BiLSTM
         layers: 1
         input_dim: 512

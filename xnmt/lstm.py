@@ -162,7 +162,8 @@ class NetworkInNetworkBiRNNBuilder(object):
   and https://arxiv.org/pdf/1610.03022.pdf
   """
   def __init__(self, num_layers, input_dim, hidden_dim, model, rnn_builder_factory,
-               batch_norm=False, stride=1, num_projections=1):
+               batch_norm=False, stride=1, num_projections=1, projection_enabled=True,
+               nonlinearity="relu"):
     """
     :param num_layers: depth of the network
     :param input_dim: size of the inputs
@@ -175,10 +176,13 @@ class NetworkInNetworkBiRNNBuilder(object):
     """
     assert num_layers > 0
     assert hidden_dim % 2 == 0
+    assert num_projections > 0
     self.builder_layers = []
     self.hidden_dim = hidden_dim
     self.stride=stride
     self.num_projections = num_projections
+    self.projection_enabled = projection_enabled
+    self.nonlinearity = nonlinearity
     f = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
     b = rnn_builder_factory(1, input_dim, hidden_dim / 2, model)
     self.use_bn = batch_norm
@@ -243,7 +247,9 @@ class NetworkInNetworkBiRNNBuilder(object):
     lintransf_param = dy.parameter(lintransf)
     for pos in range(0, len(es), stride):
       concat = dy.concatenate(es[pos:pos+stride])
-      proj = lintransf_param * concat
+      if self.projection_enabled:
+        proj = lintransf_param * concat
+      else: proj = concat
       projections.append(proj)
     if self.use_bn:
       bn_layer = bn.bn_expr(dy.concatenate([dy.reshape(x, (1,self.hidden_dim), batch_size=batch_size) for x in projections], 
@@ -257,6 +263,12 @@ class NetworkInNetworkBiRNNBuilder(object):
         nonlin = dy.rectify(proj)
         es.append(nonlin)
     return es
-    
+  def apply_nonlinearity(self, expr):
+    if self.nonlinearity is None:
+      return expr
+    elif self.nonlinearity.lower()=="relu":
+      return dy.rectify(expr)
+    else:
+      raise RuntimeError("unknown nonlinearity %s" % self.nonlinearity)
   def initial_state(self):
     return PseudoState(self)
