@@ -58,6 +58,7 @@ options = [
   Option("decoder_layers", int, default_value=2),
   Option("residual_to_output", bool, default_value=True,
          help_str="If using residual networks in the decoder, whether to add a residual connection to the output layer"),
+  Option("neighbor_label_smoothing_weights", list, default_value=[]),  
 ]
 
 class XnmtTrainer:
@@ -108,8 +109,7 @@ class XnmtTrainer:
       self.decoder = self.model_params.decoder
       self.input_embedder = self.model_params.input_embedder
       self.output_embedder = self.model_params.output_embedder
-      self.translator = DefaultTranslator(self.input_embedder, self.encoder, self.attender, 
-                                          self.output_embedder, self.decoder)
+      self.translator = self.model_params.translator
       self.input_reader = InputReader.create_input_reader(self.args.input_format, src_vocab)
       self.output_reader = InputReader.create_input_reader("text", trg_vocab)
       self.input_reader.freeze()
@@ -166,9 +166,11 @@ class XnmtTrainer:
                                      self.output_mlp_hidden_dim, len(self.output_reader.vocab),
                                      self.model, self.output_word_emb_dim, decoder_rnn)
 
-    self.translator = DefaultTranslator(self.input_embedder, self.encoder, self.attender, self.output_embedder, self.decoder)
+    self.translator = Translator.translator_from_spec(self.input_embedder, self.encoder, self.attender, 
+                                                      self.output_embedder, self.decoder, self.args.neighbor_label_smoothing_weights)
     self.model_params = ModelParams(self.encoder, self.attender, self.decoder, self.input_reader.vocab.i2w,
-                                    self.output_reader.vocab.i2w, self.input_embedder, self.output_embedder)
+                                    self.output_reader.vocab.i2w, self.input_embedder, self.output_embedder,
+                                    self.translator)
 
 
 

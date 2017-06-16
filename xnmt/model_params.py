@@ -4,7 +4,7 @@ class ModelParams:
   and loading the model
   """
   def __init__(self, encoder, attender, decoder, src_vocab, trg_vocab,
-               input_embedder, output_embedder):
+               input_embedder, output_embedder, translator):
     self.encoder = encoder
     self.attender = attender
     self.decoder = decoder
@@ -12,5 +12,6 @@ class ModelParams:
     self.trg_vocab = trg_vocab
     self.input_embedder = input_embedder
     self.output_embedder = output_embedder
+    self.translator = translator
     self.serialize_params = [encoder, attender, decoder, src_vocab, trg_vocab,
-                             input_embedder, output_embedder]
+                             input_embedder, output_embedder, translator]
