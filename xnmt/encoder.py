@@ -113,7 +113,7 @@ class PyramidalLSTMEncoder(BuilderEncoder):
 
 class ConvLSTMEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
-    params = self.use_params(encoder_spec, ["layers", "input_dim", model, "chn_dim"])
+    params = self.use_params(encoder_spec, ["input_dim", model, "chn_dim", "num_filters", "residual"])
     self.builder = lstm.ConvLSTMBuilder(*params)
     
 class StridedConvEncoder(BuilderEncoder):

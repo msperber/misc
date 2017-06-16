@@ -54,13 +54,15 @@ speech:
         - (2,2)
         - (2,2)
         - (2,1)
-#      - type: ConvBiLSTM
-#        layers: 1
-#        chn_dim: 32
-#        input_dim: 544
+      - type: ConvBiLSTM
+        layers: 1
+        chn_dim: 32
+        num_filters: 32
+        input_dim: 544
+        residual: True
       - type: NiNBiLSTM
         layers: 2
-        input_dim: 544
+        input_dim: 1088
         batch_norm: True
         stride: 1
         num_projections: 1

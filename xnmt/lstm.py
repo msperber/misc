@@ -58,8 +58,7 @@ class ConvLSTMBuilder:
   """
   This is a ConvLSTM implementation using a single bidirectional layer.
   """
-  def __init__(self, layers, input_dim, model, chn_dim=3, num_filters=32):
-    if layers!=1: raise RuntimeError("ConvLSTMBuilder supports only exactly one layer")
+  def __init__(self, input_dim, model, chn_dim=3, num_filters=32, residual=True):
     if input_dim%chn_dim!=0: raise RuntimeError("input_dim must be divisible by chn_dim")
     self.input_dim = input_dim
 
@@ -68,6 +67,8 @@ class ConvLSTMBuilder:
     self.num_filters = num_filters
     self.filter_size_time = 1
     self.filter_size_freq = 3
+    self.residual = residual
+    if residual and chn_dim!=num_filters: raise RuntimeError("Residual connections required chn_dim==num_filters, but found %s != %s" % (chn_dim, num_filters))
     normalInit=dy.NormalInitializer(0, 0.1)
 
     self.params = {}
@@ -78,7 +79,7 @@ class ConvLSTMBuilder:
                                init=normalInit)
       self.params["h2all_" + direction] = \
           model.add_parameters(dim=(self.filter_size_time, self.filter_size_freq, 
-                                    self.chn_dim, self.num_filters * 4),
+                                    self.num_filters, self.num_filters * 4),
                                init=normalInit)
       self.params["b_" + direction] = \
           model.add_parameters(dim=(self.num_filters * 4,), init=normalInit)
@@ -101,7 +102,7 @@ class ConvLSTMBuilder:
     if es_expr.dim() == ((sent_len, self.freq_dim, self.chn_dim), batch_size):
       es_chn = es_expr
     else:
-      es_chn = dy.reshape(es_expr, (sent_len, self.freq_dim, self.chn_dim), batch_size=batch_size) # ((276, 80, 3), 1)
+      es_chn = dy.reshape(es_expr, (sent_len, self.freq_dim, self.chn_dim), batch_size=batch_size)
 
     h_out = {}
     for direction in ["fwd", "bwd"]:
@@ -150,9 +151,19 @@ class ConvLSTMBuilder:
         h_t = dy.cmult(i_ot, dy.tanh(c[-1]))
         h.append(h_t)
       h_out[direction] = h
-    return [dy.concatenate([dy.reshape(state_fwd, (state_fwd.dim()[0][1] * state_fwd.dim()[0][2],), batch_size=batch_size),
-                            dy.reshape(state_bwd, (state_bwd.dim()[0][1] * state_bwd.dim()[0][2],), batch_size=batch_size)]) \
-            for (state_fwd,state_bwd) in zip(h_out["fwd"], reversed(h_out["bwd"]))]
+    ret_expr = []
+    for state_i in range(len(h_out["fwd"])):
+      state_fwd = h_out["fwd"][state_i]
+      state_bwd = h_out["bwd"][-1-state_i]
+      output_dim = (state_fwd.dim()[0][1] * state_fwd.dim()[0][2],)
+      if self.residual:
+        fwd_reshape = dy.reshape(state_fwd + dy.pick_range(es_chn, state_i, state_i+1), output_dim, batch_size=batch_size)
+        bwd_reshape = dy.reshape(state_bwd + dy.pick_range(es_chn, state_i, state_i+1), output_dim, batch_size=batch_size)
+      else:
+        fwd_reshape = dy.reshape(state_fwd, output_dim, batch_size=batch_size)
+        bwd_reshape = dy.reshape(state_bwd, output_dim, batch_size=batch_size)
+      ret_expr.append(dy.concatenate([fwd_reshape, bwd_reshape]))
+    return ret_expr
   
 
 class NetworkInNetworkBiRNNBuilder(object):

@@ -207,7 +207,7 @@ class StridedConvEncBuilder(object):
         if self.nonlinearity=="maxout":
           cnn_layer_alt = self.bn_alt_layers[layer_i].bn_expr(cnn_layer_alt, train=self.train)
       if self.nonlinearity=="relu":
-        cnn_layer = dy.rectify(cnn_layer) # TODO: might do maxout (see https://arxiv.org/abs/1701.02720 )
+        cnn_layer = dy.rectify(cnn_layer)
       elif self.nonlinearity=="maxout":
         cnn_layer = dy.bmax(cnn_layer, cnn_layer_alt)
       elif self.nonlinearity is not None:
