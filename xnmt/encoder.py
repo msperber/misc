@@ -27,13 +27,6 @@ class Encoder(TrainTestInterface):
     :param encoder_spec: Encoder-specific settings (encoders must consume all provided settings)
     :param model: The model that we should add the parameters to
     """
-#      stridedConv = StridedConvEncoder(layers, input_dim, model) 
-#      return ModularEncoder(model,
-#                             stridedConv,
-#                             ConvLSTMEncoder(layers=1, input_dim=stridedConv.builder.get_output_dim(), model=model, chn_dim=32),
-#                             NetworkInNetworkBiLSTMEncoder(layers, stridedConv.builder.get_output_dim()*2, output_dim, model),
-#                             BiLSTMEncoder(layers, output_dim, output_dim, model, dropout=0.0),
-                            
     registered_encoders = {
                          "bilstm" : BiLSTMEncoder,
                          "residuallstm" : ResidualLSTMEncoder,
@@ -111,7 +104,7 @@ class ResidualBiLSTMEncoder(BuilderEncoder):
 
 class PyramidalLSTMEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
-    params = self.use_params(encoder_spec, ["layers", "input_dim", "hidden_dim", model, dy.VanillaLSTMBuilder, "dropout"],
+    params = self.use_params(encoder_spec, ["layers", "input_dim", "hidden_dim", model, dy.VanillaLSTMBuilder, "downsampling_method", "dropout"],
                              map_to_default_layer_dim=["hidden_dim"])
     self.dropout = params.pop()
     self.builder = pyramidal.PyramidalRNNBuilder(*params)
