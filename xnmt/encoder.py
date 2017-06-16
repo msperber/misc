@@ -70,8 +70,6 @@ class BuilderEncoder(Encoder):
         if param not in encoder_spec:
           if param in map_to_default_layer_dim and "default_layer_dim" in encoder_spec:
             val = encoder_spec["default_layer_dim"]
-          elif param == "dropout":
-            val = 0.0
           else:
             raise RuntimeError("Missing encoder param %s in encoder %s" % (param, encoder_spec["type"]))
         else:
@@ -95,21 +93,30 @@ class BiLSTMEncoder(BuilderEncoder):
 
 class ResidualLSTMEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
-    params = self.use_params(encoder_spec, ["layers", "input_dim", "hidden_dim", model, dy.VanillaLSTMBuilder, "residual_to_output"],
+    params = self.use_params(encoder_spec, ["layers", "input_dim", "hidden_dim", model, dy.VanillaLSTMBuilder, "residual_to_output", "dropout"],
                              map_to_default_layer_dim=["hidden_dim"])
+    self.dropout = params.pop()
     self.builder = residual.ResidualRNNBuilder(*params)
+  def set_train(self, val):
+    self.builder.set_dropout(self.dropout if val else 0.0)
 
 class ResidualBiLSTMEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
-    params = self.use_params(encoder_spec, ["layers", "input_dim", "hidden_dim", model, dy.VanillaLSTMBuilder, "residual_to_output"],
+    params = self.use_params(encoder_spec, ["layers", "input_dim", "hidden_dim", model, dy.VanillaLSTMBuilder, "residual_to_output", "dropout"],
                              map_to_default_layer_dim=["hidden_dim"])
+    self.dropout = params.pop()
     self.builder = residual.ResidualBiRNNBuilder(*params)
+  def set_train(self, val):
+    self.builder.set_dropout(self.dropout if val else 0.0)
 
 class PyramidalLSTMEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
-    params = self.use_params(encoder_spec, ["layers", "input_dim", "hidden_dim", model, dy.VanillaLSTMBuilder],
+    params = self.use_params(encoder_spec, ["layers", "input_dim", "hidden_dim", model, dy.VanillaLSTMBuilder, "dropout"],
                              map_to_default_layer_dim=["hidden_dim"])
+    self.dropout = params.pop()
     self.builder = pyramidal.PyramidalRNNBuilder(*params)
+  def set_train(self, val):
+    self.builder.set_dropout(self.dropout if val else 0.0)
 
 class ConvLSTMEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
@@ -130,11 +137,13 @@ class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
     params = self.use_params(encoder_spec, ["layers", "input_dim", "hidden_dim", model, 
                                             dy.VanillaLSTMBuilder, "batch_norm", "stride",
                                             "num_projections", "projection_enabled",
-                                            "nonlinearity"],
+                                            "nonlinearity", "dropout"],
                              map_to_default_layer_dim=["hidden_dim"])
+    self.dropout = params.pop()
     self.builder = lstm.NetworkInNetworkBiRNNBuilder(*params)
   def set_train(self, val):
     self.builder.train = val
+    self.builder.set_dropout(self.dropout if val else 0.0)
   
 class ModularEncoder(Encoder):
   def __init__(self, encoder_spec, model):
@@ -154,3 +163,6 @@ class ModularEncoder(Encoder):
         else:
           sent = ExpressionSequence(expr_list=sent)
     return sent
+
+  def get_train_test_components(self):
+    return self.modules
