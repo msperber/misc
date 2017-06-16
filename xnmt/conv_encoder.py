@@ -228,8 +228,8 @@ class PoolingConvEncBuilder(object):
   Implements several CNN layers, with strided max pooling interspersed.
   """
   
-  def __init__(self, num_layers, input_dim, model, chn_dim=3, num_filters=32, 
-               output_tensor=False, stride=(1,1), nonlinearity="relu"):
+  def __init__(self, input_dim, model, pooling=[None, (1,1)], chn_dim=3, num_filters=32, 
+               output_tensor=False, nonlinearity="relu"):
     """
     :param num_layers: encoder depth
     :param input_dim: size of the inputs, before factoring out the channels.
@@ -240,16 +240,16 @@ class PoolingConvEncBuilder(object):
     :param output_tensor: if set, the output is directly given as a 3d-tensor, rather than converted to a list of vector expressions
     :param nonlinearity: "rely" / "maxout" / None
     """
-    assert num_layers > 0
     assert input_dim % chn_dim == 0
     
-    self.num_layers = num_layers
+    self.num_layers = len(pooling)
+    assert self.num_layers > 0
     self.chn_dim = chn_dim
     self.freq_dim = input_dim / chn_dim
     self.num_filters = num_filters
     self.filter_size_time = 3
     self.filter_size_freq = 3
-    self.stride = stride
+    self.pooling = pooling
     self.output_tensor = output_tensor
     self.nonlinearity = nonlinearity
     
@@ -258,7 +258,7 @@ class PoolingConvEncBuilder(object):
     self.filters_layers = []
     self.bn_alt_layers = []
     self.filters_alt_layers = []
-    for layer_i in range(num_layers):
+    for layer_i in range(self.num_layers):
       filters = model.add_parameters(dim=(self.filter_size_time,
                                           self.filter_size_freq,
                                           self.chn_dim if layer_i==0 else self.num_filters,
@@ -280,11 +280,10 @@ class PoolingConvEncBuilder(object):
     return conv_dim * self.num_filters
   
   def get_stride_for_layer(self, layer_i):
-    return (1,1)
-#    if type(self.stride)==tuple: return self.stride
-#    else:
-#      assert type(self.stride)==list
-#      return self.stride[layer_i]
+    if self.pooling[layer_i]:
+      return self.pooling[layer_i]
+    else:
+      return (1,1) 
   
   def get_output_len(self, input_len):
     conv_dim = input_len
@@ -292,10 +291,10 @@ class PoolingConvEncBuilder(object):
       conv_dim = int(math.ceil(float(conv_dim - self.filter_size_time + 1) / float(self.get_stride_for_layer(layer_i)[0])))
     return conv_dim
 
-  def whoami(self): return "StridedConvEncBuilder"
+  def whoami(self): return "PoolingConvEncBuilder"
 
   def set_dropout(self, p):
-    if p>0.0: raise NotImplementedError("StridedConvEncBuilder does not support dropout")
+    if p>0.0: raise NotImplementedError("PoolingConvEncBuilder does not support dropout")
   def disable_dropout(self):
     pass
 
@@ -339,7 +338,8 @@ class PoolingConvEncBuilder(object):
         raise RuntimeError("unknown nonlinearity: %s" % self.nonlinearity)
       
       # max pooling
-      
+      if self.pooling[layer_i]:
+        cnn_layer = dy.maxpooling2d(cnn_layer, (3,3), stride=self.pooling[layer_i], is_valid=True)
       
     if self.output_tensor:
       return cnn_layer

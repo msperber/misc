@@ -69,7 +69,7 @@ class BuilderEncoder(Encoder):
         else:
           val = encoder_spec[param]
           if type(val)==list:
-            val = map(eval, val)
+            val = map(lambda x: eval(x) if type(x)==str else x, val)
         ret.append(val)
         print("  %s: %s" % (param, val))
       else:
@@ -128,8 +128,8 @@ class StridedConvEncoder(BuilderEncoder):
 
 class PoolingConvEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
-    params = self.use_params(encoder_spec, ["layers", "input_dim", model])
-    self.builder = conv_encoder.StridedConvEncBuilder(*params)
+    params = self.use_params(encoder_spec, ["input_dim", model, "pooling"])
+    self.builder = conv_encoder.PoolingConvEncBuilder(*params)
 
 class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
