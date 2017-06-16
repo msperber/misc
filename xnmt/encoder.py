@@ -34,6 +34,7 @@ class Encoder(TrainTestInterface):
                          "pyramidalbilstm" : PyramidalLSTMEncoder,
                          "convbilstm" : ConvLSTMEncoder,
                          "stridedconv" : StridedConvEncoder,
+                         "poolingconv" : PoolingConvEncoder,
                          "convlstm" : ConvLSTMEncoder,
                          "ninbilstm" : NetworkInNetworkBiLSTMEncoder,
                          "modular" : ModularEncoder
@@ -124,6 +125,11 @@ class StridedConvEncoder(BuilderEncoder):
     self.builder = conv_encoder.StridedConvEncBuilder(*params)
   def set_train(self, val):
     self.builder.train = val
+
+class PoolingConvEncoder(BuilderEncoder):
+  def init_builder(self, encoder_spec, model):
+    params = self.use_params(encoder_spec, ["layers", "input_dim", model])
+    self.builder = conv_encoder.StridedConvEncBuilder(*params)
 
 class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
   def init_builder(self, encoder_spec, model):
