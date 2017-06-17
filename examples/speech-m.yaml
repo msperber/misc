@@ -25,6 +25,9 @@ defaults:
     - 3
     # indicates that the src-side data is continuous-space vectors, contained in a numpy archive (see input.py for details):
     input_format: contvec
+    neighbor_label_smoothing_weights:
+    - 0.9
+    - 0.05
   decode:
     src_file: ../examples/data/synth.contvec.npz
     input_format: contvec

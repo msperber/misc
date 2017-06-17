@@ -193,16 +193,17 @@ class NeighborLabelSmoothingTranslator(DefaultTranslator):
       for ref_word_i in range(max_len):
         context = self.attender.calc_context(self.decoder.state.output())
         for label_i in range(len(self.smoothing_weights)):
-          ref_word = Batcher.mark_as_batch([single_trg[ref_word_i+label_i] if ref_word_i+label_i < len(single_trg) else Vocab.ES for single_trg in trg])
-          word_loss = self.decoder.calc_loss(context, ref_word)
-          mask_exp = dy.inputVector([1 if ref_word_i < len(single_trg) else 0 for single_trg in trg])
-          mask_exp = dy.reshape(mask_exp, (1,), len(trg))
-          word_loss = dy.sum_batches(word_loss * mask_exp)
-          losses.append(word_loss * self.smoothing_weights[label_i])
-          if label_i > 0:
+          if ref_word_i+label_i < max_len:
+            ref_word = Batcher.mark_as_batch([single_trg[ref_word_i+label_i] if ref_word_i+label_i < len(single_trg) else Vocab.ES for single_trg in trg])
+            word_loss = self.decoder.calc_loss(context, ref_word)
+            mask_exp = dy.inputVector([1 if ref_word_i+label_i < len(single_trg) else 0 for single_trg in trg])
+            mask_exp = dy.reshape(mask_exp, (1,), len(trg))
+            word_loss = dy.sum_batches(word_loss * mask_exp)
+            losses.append(word_loss * self.smoothing_weights[label_i])
+          if label_i > 0 and ref_word_i-label_i>=0:
             ref_word = Batcher.mark_as_batch([single_trg[ref_word_i-label_i] if 0 <= ref_word_i-label_i < len(single_trg) else Vocab.ES for single_trg in trg])
             word_loss = self.decoder.calc_loss(context, ref_word)
-            mask_exp = dy.inputVector([1 if ref_word_i < len(single_trg) else 0 for single_trg in trg])
+            mask_exp = dy.inputVector([1 if 0 <= ref_word_i-label_i < len(single_trg) else 0 for single_trg in trg])
             mask_exp = dy.reshape(mask_exp, (1,), len(trg))
             word_loss = dy.sum_batches(word_loss * mask_exp)
             losses.append(word_loss * self.smoothing_weights[label_i])
