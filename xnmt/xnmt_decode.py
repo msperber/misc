@@ -18,6 +18,7 @@ options = [
   Option("src_file", help_str="path of input src file to be translated"),
   Option("trg_file", help_str="path of file where expected trg translatons will be written"),
   Option("max_src_len", int, required=False, help_str="Remove sentences from data to decode that are longer than this on the source side"),
+  Option("max_num_sents", int, required=False, help_str="Consider only first n sentences"),
   Option("input_format", default_value="text", help_str="format of input data: text/contvec"),
   Option("post_process", default_value="none", help_str="post-processing of translation outputs: none/join-char/join-bpe"),
   Option("beam", int, default_value=1),
@@ -65,8 +66,10 @@ def xnmt_decode(args, model_elements=None):
 
   translator.set_train(False)
   with open(args.trg_file, 'wb') as fp:  # Saving the translated output to a trg file
-    for src in src_corpus:
+    for src_i, src in enumerate(src_corpus):
       if args.max_src_len is not None and len(src) > args.max_src_len:
+        trg_sent = NO_DECODING_ATTEMPTED
+      elif args.max_num_sents is not None and src_i >= args.max_num_sents:
         trg_sent = NO_DECODING_ATTEMPTED
       else:
         dy.renew_cg()
