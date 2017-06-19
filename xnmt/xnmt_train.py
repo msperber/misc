@@ -1,4 +1,3 @@
-# coding: utf-8
 from __future__ import division
 
 import argparse
@@ -34,6 +33,7 @@ options = [
   Option("max_src_len", int, required=False, help_str="Remove sentences from training/dev data that are longer than this on the source side"),
   Option("max_trg_len", int, required=False, help_str="Remove sentences from training/dev data that are longer than this on the target side"),
   Option("max_num_train_sents", int, required=False, help_str="Load only the first n sentences from the training data"),
+  Option("max_num_dev_sents", int, required=False, help_str="Load only the first n sentences from the dev data"),
   Option("model_file"),
   Option("pretrained_model_file", default_value="", help_str="Path of pre-trained model file"),
   Option("input_vocab", default_value="", help_str="Path of fixed input vocab file"),
@@ -193,8 +193,8 @@ class XnmtTrainer:
     self.output_reader.freeze()
 
     self.dev_src, self.dev_trg = \
-        self.remove_long_sents(self.input_reader.read_file(self.args.dev_src),
-                               self.output_reader.read_file(self.args.dev_trg),
+        self.remove_long_sents(self.input_reader.read_file(self.args.dev_src, max_num=self.args.max_num_dev_sents),
+                               self.output_reader.read_file(self.args.dev_trg, max_num=self.args.max_num_dev_sents),
                                self.args.max_src_len, self.args.max_trg_len,
                                )
     assert len(self.dev_src) == len(self.dev_trg)
