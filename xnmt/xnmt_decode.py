@@ -60,7 +60,7 @@ def xnmt_decode(args, model_elements=None):
 
   src_corpus = input_reader.read_file(args.src_file)
   
-  search_strategy=BeamSearch(b=args.beam, max_len=args.max_len, len_norm=NoNormalization())
+  search_strategy=BeamSearch(b=args.beam, max_len=args.max_len, len_norm=PolynomialNormalization(apply_during_search=True))
 
   # Perform decoding
 
