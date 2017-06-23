@@ -112,8 +112,8 @@ class XnmtTrainer:
       self.decoder = self.model_params.decoder
       self.input_embedder = self.model_params.input_embedder
       self.output_embedder = self.model_params.output_embedder
-      self.translator = self.model_params.translator
-      self.input_reader = InputReader.create_input_reader(self.args.input_format, src_vocab, self.args.input_word_embed_dim)
+      self.translator = DefaultTranslator(self.model_params.input_embedder, self.model_params.encoder, self.model_params.attender, self.model_params.output_embedder, self.model_params.decoder) 
+      self.input_reader = InputReader.create_input_reader(self.args.input_format, src_vocab, self.model_params.input_embedder.emb_dim)
       self.output_reader = InputReader.create_input_reader("text", trg_vocab)
       self.input_reader.freeze()
       self.output_reader.freeze()
