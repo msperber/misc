@@ -164,11 +164,10 @@ class XnmtTrainer:
     self.attender = StandardAttender(self.attention_context_dim, self.output_state_dim, self.attender_hidden_dim,
                                      self.model)
 
-    self.decoder = MlpSoftmaxDecoder(self.args.decoder_type, self.args.decoder_layers, 
-                                     self.attention_context_dim, self.output_state_dim,
-                                     self.output_mlp_hidden_dim, len(self.output_reader.vocab),
-                                     self.model, self.output_word_emb_dim, self.args.dropout,
-                                     self.args.residual_to_output)
+    self.decoder = MlpSoftmaxDecoder(self.args.decoder_layers, self.attention_context_dim,
+                                     self.output_state_dim, self.output_mlp_hidden_dim,
+                                     len(self.output_reader.vocab), self.model, self.output_word_emb_dim,
+                                     self.args.dropout, self.args.decoder_type, self.args.residual_to_output)
 
     self.translator = Translator.translator_from_spec(self.input_embedder, self.encoder, self.attender, 
                                                       self.output_embedder, self.decoder, self.args.neighbor_label_smoothing_weights)
