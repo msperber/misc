@@ -18,8 +18,10 @@ class BeamSearch(SearchStrategy):
     # The only reason why we don't set NoNormalization as the default is because it currently
     # breaks our documentation pipeline
     self.len_norm = len_norm if len_norm != None else NoNormalization()
-    
-    self.entrs = []
+
+    self.debug_report_entropy = False
+    if self.debug_report_entropy:
+      self.entrs = []
 
   class Hypothesis:
     def __init__(self, score, id_list, state):
@@ -50,9 +52,10 @@ class BeamSearch(SearchStrategy):
         context = attender.calc_context(decoder.state.output())
         score = dy.log_softmax(decoder.get_scores(context)).npvalue()
         
-        import scipy
-        entr = scipy.stats.entropy(np.exp(score))
-        self.entrs.append(entr)
+        if self.debug_report_entropy:
+          import scipy
+          entr = scipy.stats.entropy(np.exp(score))
+          self.entrs.append(entr)
         
         top_ids = np.argpartition(score, max(-len(score),-self.b))[-self.b:]
 
@@ -71,5 +74,5 @@ class BeamSearch(SearchStrategy):
     self.len_norm.normalize_completed(completed_hyp, src_length)
 
     result = sorted(completed_hyp, key=lambda x: x.score, reverse=True)[0]
-    print "avg entropy so far:", np.average(self.entrs)
+    if self.debug_report_entropy: print "avg entropy so far:", np.average(self.entrs)
     return result.id_list
