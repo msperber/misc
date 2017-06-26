@@ -72,14 +72,23 @@ class PlainTextReader(InputReader):
 
   def read_file(self, filename, max_num=None):
     sents = []
-    with open(filename) as f:
-      for line in f:
-        words = line.decode('utf-8').strip().split()
-        sent = [self.vocab.convert(word) for word in words]
-        sent.append(self.vocab.convert(Vocab.ES_STR))
-        sents.append(SimpleSentenceInput(sent))
-        if max_num is not None and len(sents) >= max_num:
-          break
+    if filename.startswith("__random"):
+      _, num_sent, sent_len, vocab_size = filename.split()
+      sents = []
+      for _ in range(int(num_sent)):
+        word_ids = np.random.randint(2, int(vocab_size), int(sent_len))
+        word_strs = [unicode(w) for w in word_ids]
+        word_ids = [self.vocab.convert(w) for w in word_strs]
+        sents.append(SimpleSentenceInput(word_ids))
+    else:
+      with open(filename) as f:
+        for line in f:
+          words = line.decode('utf-8').strip().split()
+          sent = [self.vocab.convert(word) for word in words]
+          sent.append(self.vocab.convert(Vocab.ES_STR))
+          sents.append(SimpleSentenceInput(sent))
+          if max_num is not None and len(sents) >= max_num:
+            break
     return sents
 
   def freeze(self):
@@ -100,13 +109,17 @@ class ContVecReader(InputReader):
     self.token_dim = token_dim
 
   def read_file(self, filename, max_num=None):
-    npzFile = np.load(filename)
-    npzKeys = sorted(npzFile.files, key=lambda x: int(x.split('_')[1]))
-    conditional_reshape = lambda x: x.reshape((x.shape[0],) + self.token_dim) if self.token_dim else x
-    if max_num is not None and max_num < len(npzKeys):
-      npzKeys = npzKeys[:max_num]
-    sents = map(lambda f:ArrayInput(conditional_reshape(npzFile[f])), npzKeys)
-    npzFile.close()
+    if filename.startswith("__random"):
+      _, num_sent, sent_len, inp_dim = filename.split()
+      sents = [ArrayInput(np.random.random((int(sent_len),int(inp_dim)))) for _ in range(int(num_sent))]
+    else:
+      npzFile = np.load(filename)
+      npzKeys = sorted(npzFile.files, key=lambda x: int(x.split('_')[1]))
+      conditional_reshape = lambda x: x.reshape((x.shape[0],) + self.token_dim) if self.token_dim else x
+      if max_num is not None and max_num < len(npzKeys):
+        npzKeys = npzKeys[:max_num]
+      sents = map(lambda f:ArrayInput(conditional_reshape(npzFile[f])), npzKeys)
+      npzFile.close()
     return sents
 
   def freeze(self):
