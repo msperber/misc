@@ -161,7 +161,7 @@ class XnmtTrainer:
 
     self.output_embedder = SimpleWordEmbedder(len(self.output_reader.vocab), self.output_word_emb_dim, self.model, self.args.weight_noise)
 
-    global_train_params = {"dropout" : self.args.dropout, "default_layer_dim":self.args.default_layer_dim}
+    global_train_params = {"dropout" : self.args.dropout, "default_layer_dim":self.args.default_layer_dim, "weight_noise": self.args.weight_noise}
     self.encoder = Encoder.from_spec(self.args.encoder, global_train_params, self.model)
 
     self.attender = StandardAttender(self.attention_context_dim, self.output_state_dim, self.attender_hidden_dim,

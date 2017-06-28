@@ -46,6 +46,14 @@ class PyramidalRNNBuilder(object):
     for (fb, bb) in self.builder_layers:
       fb.disable_dropout()
       bb.disable_dropout()
+  def set_weight_noise(self, p):
+    for (fb, bb) in self.builder_layers:
+      fb.set_weight_noise(p)
+      bb.set_weight_noise(p)
+  def disable_weight_noise(self):
+    for (fb, bb) in self.builder_layers:
+      fb.disable_weight_noise()
+      bb.disable_weight_noise()
 
   def transduce(self, es):
     """
