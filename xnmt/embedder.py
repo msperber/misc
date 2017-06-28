@@ -23,10 +23,10 @@ class Embedder:
     raise NotImplementedError('embed_sent must be implemented in Embedder subclasses')
 
   @staticmethod
-  def from_spec(input_format, vocab_size, emb_dim, model):
+  def from_spec(input_format, vocab_size, emb_dim, model, weight_noise):
     input_format_lower = input_format.lower()
     if input_format_lower == "text":
-      return SimpleWordEmbedder(vocab_size, emb_dim, model)
+      return SimpleWordEmbedder(vocab_size, emb_dim, model, weight_noise)
     elif input_format_lower == "contvec":
       return NoopEmbedder(emb_dim, model)
     else:
@@ -96,22 +96,26 @@ class SimpleWordEmbedder(Embedder):
   Simple word embeddings via lookup.
   """
 
-  def __init__(self, vocab_size, emb_dim, model):
+  def __init__(self, vocab_size, emb_dim, model, weight_noise):
     self.vocab_size = vocab_size
     if type(emb_dim)==tuple:
       assert len(emb_dim)==1
       emb_dim = emb_dim[0]
     self.emb_dim = emb_dim
     self.embeddings = model.add_lookup_parameters((vocab_size, emb_dim))
-    self.serialize_params = [vocab_size, emb_dim, model]
+    self.weight_noise = weight_noise
+    self.serialize_params = [vocab_size, emb_dim, model, weight_noise]
 
   def embed(self, x):
     # single mode
     if not Batcher.is_batch_word(x):
-      return self.embeddings[x]
+      ret = self.embeddings[x]
     # minibatch mode
     else:
-      return self.embeddings.batch(x)
+      ret = self.embeddings.batch(x)
+    if self.weight_noise > 0.0:
+      ret = dy.noise(ret, self.weight_noise)
+    return ret
 
   def embed_sent(self, sent):
     # single mode

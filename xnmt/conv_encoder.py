@@ -98,7 +98,8 @@ class StridedConvEncBuilder(object):
   """
   
   def __init__(self, num_layers, input_dim, model, chn_dim=3, num_filters=32, 
-               output_tensor=False, batch_norm=False, stride=(2,2), nonlinearity="relu"):
+               output_tensor=False, batch_norm=False, stride=(2,2), nonlinearity="relu",
+               init_gauss_var=0.1):
     """
     :param num_layers: encoder depth
     :param input_dim: size of the inputs, before factoring out the channels.
@@ -127,7 +128,7 @@ class StridedConvEncBuilder(object):
     self.use_bn = batch_norm
     self.train = True
     
-    normalInit=dy.NormalInitializer(0, 0.1)
+    normalInit=dy.NormalInitializer(0, init_gauss_var)
     self.bn_layers = []
     self.filters_layers = []
     self.bn_alt_layers = []
@@ -229,7 +230,7 @@ class PoolingConvEncBuilder(object):
   """
   
   def __init__(self, input_dim, model, pooling=[None, (1,1)], chn_dim=3, num_filters=32, 
-               output_tensor=False, nonlinearity="relu"):
+               output_tensor=False, nonlinearity="relu", init_gauss_var=0.1):
     """
     :param num_layers: encoder depth
     :param input_dim: size of the inputs, before factoring out the channels.
@@ -253,7 +254,7 @@ class PoolingConvEncBuilder(object):
     self.output_tensor = output_tensor
     self.nonlinearity = nonlinearity
     
-    normalInit=dy.NormalInitializer(0, 0.1)
+    normalInit=dy.NormalInitializer(0, init_gauss_var)
     self.bn_layers = []
     self.filters_layers = []
     self.bn_alt_layers = []

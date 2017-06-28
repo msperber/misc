@@ -95,18 +95,20 @@ class ConvLSTMEncoder(BuilderEncoder):
     self.serialize_params = [model, global_train_params, input_dim, chn_dim, num_filters, residual]
     
 class StridedConvEncoder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim, layers=1, chn_dim=3, num_filters=32, output_tensor=False, batch_norm=True, stride=(2,2), nonlinearity="relu"):
+  def __init__(self, model, global_train_params, input_dim, layers=1, chn_dim=3, num_filters=32, 
+               output_tensor=False, batch_norm=True, stride=(2,2), nonlinearity="relu", init_gauss_var=0.1):
     self.builder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model, chn_dim, 
                                             num_filters, output_tensor, batch_norm,
-                                            stride, nonlinearity)
-    self.serialize_params = [model, global_train_params, input_dim, layers, chn_dim, num_filters, output_tensor, batch_norm, stride, nonlinearity]
+                                            stride, nonlinearity, init_gauss_var)
+    self.serialize_params = [model, global_train_params, input_dim, layers, chn_dim, num_filters, output_tensor, batch_norm, stride, nonlinearity, init_gauss_var]
   def set_train(self, val):
     self.builder.train = val
 
 class PoolingConvEncoder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim, pooling):
-    self.builder = conv_encoder.PoolingConvEncBuilder(input_dim, model, pooling)
-    self.serialize_params = [model, global_train_params, input_dim, pooling]
+  def __init__(self, model, global_train_params, input_dim, pooling=[None, (1,1)], chn_dim=3, num_filters=32, 
+               output_tensor=False, nonlinearity="relu", init_gauss_var=0.1):
+    self.builder = conv_encoder.PoolingConvEncBuilder(input_dim, model, pooling, chn_dim, num_filters, output_tensor, nonlinearity, init_gauss_var)
+    self.serialize_params = [model, global_train_params, input_dim, pooling, chn_dim, num_filters, output_tensor, nonlinearity, init_gauss_var]
 
 class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
   def __init__(self, model, global_train_params, input_dim, layers=1, hidden_dim=None, batch_norm=True, stride=1, num_projections=1, projection_enabled=True, nonlinearity="relu", dropout=None):

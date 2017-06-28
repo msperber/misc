@@ -56,6 +56,7 @@ options = [
   Option("lr_threshold", float, default_value=1e-5),
   Option("eval_metrics", default_value="bleu"),
   Option("dropout", float, default_value=0.0),
+  Option("weight_noise", float, default_value=0.0),
   Option("encoder", dict, default_value={}),  
   Option("encoder.type", default_value="BiLSTM"),
   Option("encoder.input_dim", int, required=False),
@@ -156,9 +157,9 @@ class XnmtTrainer:
     self.output_mlp_hidden_dim = self.args.output_mlp_hidden_dim
 
     self.input_embedder = Embedder.from_spec(self.args.input_format, len(self.input_reader.vocab),
-                                             self.input_word_emb_dim, self.model)
+                                             self.input_word_emb_dim, self.model, self.args.weight_noise)
 
-    self.output_embedder = SimpleWordEmbedder(len(self.output_reader.vocab), self.output_word_emb_dim, self.model)
+    self.output_embedder = SimpleWordEmbedder(len(self.output_reader.vocab), self.output_word_emb_dim, self.model, self.args.weight_noise)
 
     global_train_params = {"dropout" : self.args.dropout, "default_layer_dim":self.args.default_layer_dim}
     self.encoder = Encoder.from_spec(self.args.encoder, global_train_params, self.model)
