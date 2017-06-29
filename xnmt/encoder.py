@@ -123,10 +123,11 @@ class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
     self.dropout = dropout
     if weight_noise is None: weight_noise = global_train_params.get("weight_noise", 0.0)
     self.weight_noise = weight_noise
+    
     self.builder = lstm.NetworkInNetworkBiRNNBuilder(layers, input_dim, hidden_dim, model, 
                                             dy.VanillaLSTMBuilder, batch_norm, stride,
                                             num_projections, projection_enabled,
-                                            nonlinearity, dropout)
+                                            nonlinearity)
     self.serialize_params = [model, global_train_params, input_dim, layers, hidden_dim, batch_norm, stride, num_projections, projection_enabled, nonlinearity, dropout]
   def set_train(self, val):
     self.builder.set_dropout(self.dropout if val else 0.0)
