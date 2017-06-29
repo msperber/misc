@@ -70,10 +70,7 @@ class PyramidalRNNBuilder(object):
       if self.downsampling_method=="concat" and len(es)%2!=0:
         zero_pad = dy.inputTensor(np.zeros(es[0].dim()[0]+(es[0].dim()[1],)), batched=True)
         es.append(zero_pad)
-      try:
-        fs = fb.initial_state().transduce(es)
-      except:
-        fs = fb.initial_state().transduce(es)
+      fs = fb.initial_state().transduce(es)
       bs = bb.initial_state().transduce(reversed(es))
       if layer_i < len(self.builder_layers) - 1:
         if self.downsampling_method=="skip":

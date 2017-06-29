@@ -18,11 +18,9 @@ defaults:
     dev_trg: ../examples/data/synth.char
     # choose pyramidal LSTM encoder:
     encoder:
-      type: PyramidalBiLSTM
+      type: PyramidalLSTM
     # indicate the dimension of the feature vectors:
-    input_word_embed_dim:
-    - 80
-    - 3
+    input_word_embed_dim: 240
     # indicates that the src-side data is continuous-space vectors, contained in a numpy archive (see input.py for details):
     input_format: contvec
     neighbor_label_smoothing_weights:
@@ -36,51 +34,10 @@ defaults:
 
 speech:
   train:
-    default_layer_dim: 512
+    default_layer_dim: 256
     attender_hidden_dim: 128
     output_word_embed_dim: 64
     output_state_dim: 256
     output_mlp_hidden_dim: 512
     decoder_layers: 2
-    encoder:
-      type: Modular
-      modules:
-#      - type: StridedConv
-#        layers: 3
-#        output_tensor: False
-#        input_dim: 240
-#        chn_dim: 3
-#        num_filters: 32
-#        batch_norm: True
-#        nonlinearity: maxout
-#        stride:
-#        - (2,2)
-#        - (2,2)
-#        - (2,1)
-      - type: PoolingConv
-        input_dim: 240
-        pooling:
-        - False
-        - !!python/tuple [2,2]
-        - False
-        - !!python/tuple [2,2]
-#      - type: ConvBiLSTM
-#        layers: 1
-#        chn_dim: 32
-#        num_filters: 32
-#        input_dim: 544
-#        residual: True
-#      - type: NiNBiLSTM
-#        layers: 2
-#        input_dim: 1088
-#        batch_norm: True
-#        stride: 1
-#        num_projections: 1
-#        projection_enabled: True
-#        nonlinearity: relu
-      - type: BiLSTM
-        layers: 1
-        input_dim: 512
-        hidden_dim: 512
-        
 
