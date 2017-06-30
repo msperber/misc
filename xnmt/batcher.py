@@ -162,7 +162,10 @@ class SourceBucketBatcher(BucketBatcher):
   """
 
   def bucket_index(self, pair):
-    return len(pair[Batcher.PAIR_SRC])
+    try:
+      return len(pair[Batcher.PAIR_SRC])
+    except:
+      return len(pair[Batcher.PAIR_SRC])
 
 
 class SourceTargetBucketBatcher(SourceBucketBatcher):

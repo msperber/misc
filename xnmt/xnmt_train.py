@@ -65,6 +65,8 @@ options = [
   Option("residual_to_output", bool, default_value=True,
          help_str="If using residual networks in the decoder, whether to add a residual connection to the output layer"),
   Option("neighbor_label_smoothing_weights", list, default_value=[]),  
+  Option("subsample_epoch", int, default_value=-1,
+         help_str="For each epoch, choose this many sentences at random (useful to train on large data while not keeping all in memory)"),
 ]
 
 class XnmtTrainer:
@@ -85,25 +87,31 @@ class XnmtTrainer:
       raise RuntimeError("illegal lr_decay, must satisfy: 0.0 < lr_decay <= 1.0")
     self.learning_scale = 1.0
     self.early_stopping_reached = False
+    
+    if self.args.max_num_train_sents and self.args.subsample_epoch>0:
+      raise RuntimeError("max_num_train_sents and subsample_epoch are mutually exclusive")
 
 
     # Create the model serializer
     self.create_model()
+    self.make_batches()
+
+  def make_batches(self):
     # single mode
-    if args.batch_size is None or args.batch_size == 1 or args.batch_strategy.lower() == 'none':
+    if self.args.batch_size is None or self.args.batch_size == 1 or self.args.batch_strategy.lower() == 'none':
       print('Start training in non-minibatch mode...')
       self.logger = NonBatchLossTracker(args.eval_every, self.total_train_sent)
 
     # minibatch mode
     else:
       print('Start training in minibatch mode...')
-      self.batcher = Batcher.select_batcher(args.batch_strategy)(args.batch_size)
-      if args.input_format == "contvec":
+      self.batcher = Batcher.select_batcher(self.args.batch_strategy)(self.args.batch_size)
+      if self.args.input_format == "contvec":
         assert self.train_src[0].nparr.shape[1:] == self.input_embedder.emb_dim, "input embed dim is different size than expected"
         self.batcher.pad_token = np.zeros(self.input_embedder.emb_dim)
       self.train_src, self.train_trg = self.batcher.pack(self.train_src, self.train_trg)
       self.dev_src, self.dev_trg = self.batcher.pack(self.dev_src, self.dev_trg)
-      self.logger = BatchLossTracker(args.eval_every, self.total_train_sent)
+      self.logger = BatchLossTracker(self.args.eval_every, self.total_train_sent)
 
   def create_model(self):
     if self.args.pretrained_model_file:
@@ -182,9 +190,18 @@ class XnmtTrainer:
 
   def read_data(self):
     train_filters = SentenceFilterer.from_spec(self.args.train_filters)
+    max_num, subsample_func = None, None
+    if self.args.max_num_train_sents:
+      max_num = self.args.max_num_train_sents
+    elif self.args.subsample_epoch > 0:
+      max_num = self.args.subsample_epoch
+      rseed = np.random.randint(0, 100000)
+      subsample_func = lambda sub, slen: np.random.RandomState(seed=rseed).choice(slen, sub, replace=False)
+    src_sents = self.input_reader.read_file(self.args.train_src, max_num=max_num, subsample_func=subsample_func)
+    trg_sents = self.output_reader.read_file(self.args.train_trg, max_num=max_num, subsample_func=subsample_func)
     self.train_src, self.train_trg = \
-        self.filter_sents(self.input_reader.read_file(self.args.train_src, max_num=self.args.max_num_train_sents),
-                          self.output_reader.read_file(self.args.train_trg, max_num=self.args.max_num_train_sents),
+        self.filter_sents(src_sents,
+                          trg_sents,
                           train_filters)
     assert len(self.train_src) == len(self.train_trg)
     self.total_train_sent = len(self.train_src)
@@ -213,7 +230,12 @@ class XnmtTrainer:
     return filtered_src_sents, filtered_trg_sents
 
   def run_epoch(self):
+    
     self.logger.new_epoch()
+    
+    if self.logger.epoch_num>1 and self.args.subsample_epoch > 0:
+      self.read_data()
+      self.make_batches()
 
     self.translator.set_train(True)
     for batch_num, (src, trg) in enumerate(zip(self.train_src, self.train_trg)):

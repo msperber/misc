@@ -70,7 +70,7 @@ class PlainTextReader(InputReader):
     else:
       self.vocab = vocab
 
-  def read_file(self, filename, max_num=None):
+  def read_file(self, filename, max_num=None, subsample_func=None):
     sents = []
     if filename.startswith("__random"):
       _, num_sent, sent_len, vocab_size = filename.split()
@@ -87,8 +87,11 @@ class PlainTextReader(InputReader):
           sent = [self.vocab.convert(word) for word in words]
           sent.append(self.vocab.convert(Vocab.ES_STR))
           sents.append(SimpleSentenceInput(sent))
-          if max_num is not None and len(sents) >= max_num:
+          if max_num is not None and len(sents) >= max_num and subsample_func is None:
             break
+    if subsample_func is not None:
+      subsample_ids = subsample_func(max_num, len(sents))
+      sents = [sents[i] for i in subsample_ids]
     return sents
 
   def freeze(self):
@@ -108,7 +111,7 @@ class ContVecReader(InputReader):
     self.vocab = Vocab()
     self.token_dim = token_dim
 
-  def read_file(self, filename, max_num=None):
+  def read_file(self, filename, max_num=None, subsample_func=None):
     if filename.startswith("__random"):
       _, num_sent, sent_len, inp_dim = filename.split()
       sents = [ArrayInput(np.random.random((int(sent_len),int(inp_dim)))) for _ in range(int(num_sent))]
@@ -117,7 +120,12 @@ class ContVecReader(InputReader):
       npzKeys = sorted(npzFile.files, key=lambda x: int(x.split('_')[1]))
       conditional_reshape = lambda x: x.reshape((x.shape[0],) + self.token_dim) if self.token_dim else x
       if max_num is not None and max_num < len(npzKeys):
-        npzKeys = npzKeys[:max_num]
+        if subsample_func is None:
+          npzKeys = npzKeys[:max_num]
+          subsample_ids = range(max_num)
+        else:
+          subsample_ids = subsample_func(max_num, len(npzKeys))
+        npzKeys = [npzKeys[i] for i in subsample_ids]
       sents = map(lambda f:ArrayInput(conditional_reshape(npzFile[f])), npzKeys)
       npzFile.close()
     return sents
