@@ -116,7 +116,7 @@ class ContVecReader(InputReader):
       _, num_sent, sent_len, inp_dim = filename.split()
       sents = [ArrayInput(np.random.random((int(sent_len),int(inp_dim)))) for _ in range(int(num_sent))]
     else:
-      npzFile = np.load(filename)
+      npzFile = np.load(filename, mmap_mode=None if max_num is None else "r")
       npzKeys = sorted(npzFile.files, key=lambda x: int(x.split('_')[1]))
       conditional_reshape = lambda x: x.reshape((x.shape[0],) + self.token_dim) if self.token_dim else x
       if max_num is not None and max_num < len(npzKeys):
