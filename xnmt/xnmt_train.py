@@ -100,7 +100,8 @@ class XnmtTrainer:
     # single mode
     if self.args.batch_size is None or self.args.batch_size == 1 or self.args.batch_strategy.lower() == 'none':
       print('Start training in non-minibatch mode...')
-      self.logger = NonBatchLossTracker(args.eval_every, self.total_train_sent)
+      if not hasattr(self, "logger"):
+        self.logger = NonBatchLossTracker(args.eval_every, self.total_train_sent)
 
     # minibatch mode
     else:
@@ -111,7 +112,8 @@ class XnmtTrainer:
         self.batcher.pad_token = np.zeros(self.input_embedder.emb_dim)
       self.train_src, self.train_trg = self.batcher.pack(self.train_src, self.train_trg)
       self.dev_src, self.dev_trg = self.batcher.pack(self.dev_src, self.dev_trg)
-      self.logger = BatchLossTracker(self.args.eval_every, self.total_train_sent)
+      if not hasattr(self, "logger"):
+        self.logger = BatchLossTracker(self.args.eval_every, self.total_train_sent)
 
   def create_model(self):
     if self.args.pretrained_model_file:
