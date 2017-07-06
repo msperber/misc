@@ -10,50 +10,10 @@ import os
 import xnmt_preproc, xnmt_train, xnmt_decode, xnmt_evaluate
 import six
 from options import OptionParser, Option
+from tee import Tee
 import random
 import numpy as np
-
-
-class Tee:
-  """
-  Emulates a standard output or error streams. Calls to write on that stream will result
-  in printing to stdout as well as logging to a file.
-  """
-
-  def __init__(self, name, indent=0, error=False):
-    dirname = os.path.dirname(name)
-    if not os.path.exists(dirname):
-      os.makedirs(dirname)
-    self.file = open(name, 'w')
-    self.stdstream = sys.stderr if error else sys.stdout
-    self.indent = indent
-    self.error = error
-    if error:
-      sys.stderr = self
-    else:
-      sys.stdout = self
-
-  def close(self):
-    if self.error:
-      sys.stderr = self.stdstream
-    else:
-      sys.stdout = self.stdstream
-    self.file.close()
-
-  def __enter__(self):
-    return self
-
-  def __exit__(self, exc_type, exc_val, exc_tb):
-    self.close()
-
-  def write(self, data):
-    self.file.write(data)
-    self.stdstream.write(" " * self.indent + data)
-    self.flush()
-
-  def flush(self):
-    self.file.flush()
-    self.stdstream.flush()
+import copy
 
 
 if __name__ == '__main__':
@@ -95,7 +55,6 @@ if __name__ == '__main__':
     Option("eval_only", bool, default_value=False, help_str="Skip training and evaluate only"),
     Option("eval_metrics", default_value="bleu", help_str="Comma-separated list of evaluation metrics (bleu/wer/cer/wer-nopunct)"),
     Option("run_for_epochs", int, help_str="How many epochs to run each test for"),
-    Option("decode_every", int, default_value=0, help_str="Evaluation period in epochs. If set to 0, will never evaluate."),
   ]
 
   config_parser.add_task("experiment", experiment_options)
@@ -138,7 +97,7 @@ if __name__ == '__main__':
 
     evaluate_args = exp_tasks["evaluate"]
     evaluate_args.hyp_file = exp_args.hyp_file
-    evaluators = exp_args.eval_metrics.split(",")
+    evaluators = map(lambda s: s.lower(), exp_args.eval_metrics.split(","))
 
     output = Tee(exp_args.out_file, 3)
     err_output = Tee(exp_args.err_file, 3, error=True)
@@ -154,28 +113,32 @@ if __name__ == '__main__':
 
     print("> Training")
     xnmt_trainer = xnmt_train.XnmtTrainer(train_args)
+    xnmt_trainer.decode_args = copy.copy(decode_args)
+    xnmt_trainer.evaluate_args = copy.copy(evaluate_args)
 
     eval_scores = "Not evaluated"
     for i_epoch in six.moves.range(exp_args.run_for_epochs):
       if not exp_args.eval_only:
         xnmt_trainer.run_epoch()
 
-      if exp_args.decode_every != 0 and (i_epoch+1) % exp_args.decode_every == 0:
-        print("> Evaluating")
-        xnmt_decode.xnmt_decode(decode_args, model_elements=(
-          xnmt_trainer.input_reader.vocab, xnmt_trainer.output_reader.vocab, xnmt_trainer.translator))
-        eval_scores = []
-        for evaluator in evaluators:
-          evaluate_args.evaluator = evaluator
-          eval_score = xnmt_evaluate.xnmt_evaluate(evaluate_args)
-          print("{}: {}".format(evaluator, eval_score))
-          eval_scores.append(eval_score)
-      
-        # The temporary file is cleared by xnmt_decode, not clearing it explicitly here allows it to stay around
-        # after the experiment is complete.
-
       if xnmt_trainer.early_stopping_reached:
         break
+
+    print('reverting learned weights to best checkpoint..')
+    xnmt_trainer.revert_to_best_model()
+    if evaluators:
+      print("> Evaluating test set")
+      output.indent += 2
+      xnmt_decode.xnmt_decode(decode_args, model_elements=(
+        xnmt_trainer.corpus_parser, xnmt_trainer.model))
+      eval_scores = []
+      for evaluator in evaluators:
+        evaluate_args.evaluator = evaluator
+        eval_score = xnmt_evaluate.xnmt_evaluate(evaluate_args)
+        print(eval_score)
+        eval_scores.append(eval_score)
+      output.indent -= 2
+      
 
     results.append((experiment_name, eval_scores))
 
@@ -183,9 +146,10 @@ if __name__ == '__main__':
     err_output.close()
 
   print("")
-  print("{:<20}|{:<40}".format("Experiment", "Final Scores"))
-  print("-" * (60 + 1))
+  print("{:<30}|{:<40}".format("Experiment", " Final Scores"))
+  print("-" * (70 + 1))
 
   for line in results:
     experiment_name, eval_scores = line
-    print("{:<20}|{:<40}".format(experiment_name, eval_scores))
+    for i in range(len(eval_scores)):
+      print("{:<30}| {:<40}".format(experiment_name if i==0 else "", eval_scores[i]))

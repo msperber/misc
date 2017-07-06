@@ -1,12 +1,16 @@
 # coding: utf-8
 
+import io
 from output import *
 from serializer import *
-import codecs
 import sys
+from retriever import *
+from translator import *
+from search_strategy import *
 from options import OptionParser, Option
 from io import open
 import length_normalization
+import dynet as dy
 
 '''
 This will be the main class to perform decoding.
@@ -33,9 +37,10 @@ NO_DECODING_ATTEMPTED = u"@@NO_DECODING_ATTEMPTED@@"
 def xnmt_decode(args, model_elements=None):
   """
   :param model_elements: If None, the model will be loaded from args.model_file. If set, should
-  equal (src_vocab, trg_vocab, translator).
+  equal (corpus_parser, generator).
   """
   if model_elements is None:
+    raise RuntimeError("xnmt_decode with model_element=None needs to be updated to run with the new YamlSerializer")
     model = dy.Model()
     model_serializer = JSONSerializer()
     model_params = model_serializer.load_from_file(args.model_file, model)
@@ -43,48 +48,53 @@ def xnmt_decode(args, model_elements=None):
     src_vocab = Vocab(model_params.src_vocab)
     trg_vocab = Vocab(model_params.trg_vocab)
 
-    translator = DefaultTranslator(model_params.input_embedder, model_params.encoder, model_params.attender, model_params.output_embedder, model_params.decoder)
+    generator = DefaultTranslator(model_params.src_embedder, model_params.encoder, model_params.attender, model_params.trg_embedder, model_params.decoder)
 
   else:
-    src_vocab, trg_vocab, translator = model_elements
+    corpus_parser, generator = model_elements
 
-  input_reader = InputReader.create_input_reader(args.input_format, src_vocab)
-  input_reader.freeze()
+  output_generator = output_processor_for_spec(args.post_process)
 
-  if args.post_process=="none":
-    output_generator = PlainTextOutput()
-  elif args.post_process=="join-char":
-    output_generator = JoinedCharTextOutput()
-  elif args.post_process=="join-bpe":
-    output_generator = JoinedBPETextOutput()
-  else:
-    raise RuntimeError("Unknown postprocessing argument {}".format(args.postprocess)) 
-  output_generator.load_vocab(trg_vocab)
-
-  src_corpus = input_reader.read_file(args.src_file)
+  src_corpus = corpus_parser.src_reader.read_sents(args.src_file)
   
   len_norm_type = getattr(length_normalization, args.len_norm_type)
   search_strategy=BeamSearch(b=args.beam, max_len=args.max_len, len_norm=len_norm_type(**args.len_norm_params))
 
-  # Perform decoding
+  # Perform initialization
+  generator.set_train(False)
+  if issubclass(generator.__class__, Retriever):
+    generator.index_database()
 
-  translator.set_train(False)
-  with open(args.trg_file, 'wb') as fp:  # Saving the translated output to a trg file
-    for src_i, src in enumerate(src_corpus):
+  # Perform generation of output
+  src_i = 0
+  with io.open(args.trg_file, 'wt', encoding='utf-8') as fp:  # Saving the translated output to a trg file
+    for src in src_corpus:
       if args.max_src_len is not None and len(src) > args.max_src_len:
         trg_sent = NO_DECODING_ATTEMPTED
       elif args.max_num_sents is not None and src_i >= args.max_num_sents:
         trg_sent = NO_DECODING_ATTEMPTED
       else:
         dy.renew_cg()
-        token_string = translator.translate(src, search_strategy)
-        trg_sent = output_generator.process(token_string)[0]
-
-      assert isinstance(trg_sent, unicode), "Expected unicode as translator output, got %s" % type(trg_sent)
-      trg_sent = trg_sent.encode('utf-8', errors='ignore')
-
-      fp.write(trg_sent + '\n')
-
+        if issubclass(generator.__class__, Translator):
+          generator.set_train(False)
+          outputs = generator.translate(src, corpus_parser.trg_reader.vocab, search_strategy)
+          trg_sent = output_generator.process_outputs(outputs)[0]
+          if sys.version_info[0] == 2: assert isinstance(trg_sent, unicode), "Expected unicode as generator output, got %s" % type(trg_sent)
+        elif issubclass(generator.__class__, Retriever):
+          trg_sent = generator.retrieve(src)
+        else:
+          raise RuntimeError("Unknown generator type " + generator.__class__)
+      src_i += 1
+      fp.write(u"{}\n".format(trg_sent))
+def output_processor_for_spec(spec):
+  if spec=="none":
+    return PlainTextOutputProcessor()
+  elif spec=="join-char":
+    return JoinedCharTextOutputProcessor()
+  elif spec=="join-bpe":
+    return JoinedBPETextOutputProcessor()
+  else:
+    raise RuntimeError("Unknown postprocessing argument {}".format(spec))
 
 if __name__ == "__main__":
   # Parse arguments

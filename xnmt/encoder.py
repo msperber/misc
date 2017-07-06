@@ -1,12 +1,12 @@
 import dynet as dy
-from batcher import *
 import residual
 import pyramidal
 import conv_encoder
 from embedder import ExpressionSequence
 import lstm
 from translator import TrainTestInterface
-import inspect
+from serializer import Serializable
+import model_globals
 
 class Encoder(TrainTestInterface):
   """
@@ -25,134 +25,118 @@ class Encoder(TrainTestInterface):
     :returns: The encoded output. Frequently this will be a list of expressions representing the encoded vectors for each word.
     """
     raise NotImplementedError('transduce must be implemented in Encoder subclasses')
-  
-  @staticmethod
-  def from_spec(encoder_spec, global_train_params, model):
-    """Create an encoder from a specification.
-
-    :param encoder_spec: Encoder-specific settings (encoders must consume all provided settings)
-    :param global_train_params: dictionary with global params such as dropout and default_layer_dim, which the encoders are free to make use of.
-    :param model: The model that we should add the parameters to
-    """
-    encoder_spec = dict(encoder_spec)
-    encoder_type = encoder_spec.pop("type")
-    encoder_spec["model"] = model
-    encoder_spec["global_train_params"] = global_train_params
-    known_encoders = [key for (key,val) in globals().items() if inspect.isclass(val) and issubclass(val, Encoder) and key not in ["BuilderEncoder","Encoder"]]
-    if encoder_type not in known_encoders and encoder_type+"Encoder" not in known_encoders:
-      raise RuntimeError("specified encoder %s is unknown, choices are: %s" 
-                         % (encoder_type,", ".join([key for (key,val) in globals().items() if inspect.isclass(val) and issubclass(val, Encoder)])))
-    encoder_class = globals().get(encoder_type, globals().get(encoder_type+"Encoder"))
-    return encoder_class(**encoder_spec)
 
 class BuilderEncoder(Encoder):
   def transduce(self, sent):
     return self.builder.transduce(sent)
 
-class BiLSTMEncoder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim=512, layers=1, hidden_dim=None, dropout=None, weight_noise=None):
-    if hidden_dim is None: hidden_dim = global_train_params.get("default_layer_dim", 512)
-    if dropout is None: dropout = global_train_params.get("dropout", 0.0)
+class LSTMEncoder(BuilderEncoder, Serializable):
+  yaml_tag = u'!LSTMEncoder'
+
+  def __init__(self, input_dim=None, layers=1, hidden_dim=None, dropout=None, bidirectional=True, weight_noise=None):
+    model = model_globals.get("model")
+    input_dim = input_dim or model_globals.get("default_layer_dim")
+    hidden_dim = hidden_dim or model_globals.get("default_layer_dim")
+    dropout = dropout or model_globals.get("dropout")
+    self.weight_noise = weight_noise or model_globals.get("weight_noise")
+    self.input_dim = input_dim
+    self.layers = layers
+    self.hidden_dim = hidden_dim
     self.dropout = dropout
-    if weight_noise is None: weight_noise = global_train_params.get("weight_noise", 0.0)
-    self.weight_noise = weight_noise
-    self.builder = dy.BiRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder)
-    self.serialize_params = [model, global_train_params, input_dim, layers, hidden_dim, dropout]
+    if bidirectional:
+      self.builder = dy.BiRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder)
+    else:
+      self.builder = dy.VanillaLSTMBuilder(layers, input_dim, hidden_dim, model)
   def set_train(self, val):
     self.builder.set_dropout(self.dropout if val else 0.0)
     self.builder.set_weight_noise(self.weight_noise if val else 0.0)
 
-class ResidualLSTMEncoder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim=512, layers=1, hidden_dim=None, residual_to_output=False, dropout=None):
-    if hidden_dim is None: hidden_dim = global_train_params.get("default_layer_dim", 512)
-    if dropout is None: dropout = global_train_params.get("dropout", 0.0)
-    self.dropout = dropout
-    self.builder = residual.ResidualRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder, residual_to_output)
-    self.serialize_params = [model, global_train_params, input_dim, layers, hidden_dim, residual_to_output, dropout]
-  def set_train(self, val):
-    self.builder.set_dropout(self.dropout if val else 0.0)
 
-class ResidualBiLSTMEncoder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim=512, layers=1, hidden_dim=None, residual_to_output=False, dropout=None):
-    if hidden_dim is None: hidden_dim = global_train_params.get("default_layer_dim", 512)
-    if dropout is None: dropout = global_train_params.get("dropout", 0.0)
+class ResidualLSTMEncoder(BuilderEncoder, Serializable):
+  yaml_tag = u'!ResidualLSTMEncoder'
+  def __init__(self, input_dim=512, layers=1, hidden_dim=None, residual_to_output=False, dropout=None, bidirectional=True, weight_noise=None):
+    model = model_globals.get("model")
+    hidden_dim = hidden_dim or model_globals.get("default_layer_dim")
+    dropout = dropout or model_globals.get("dropout")
+    weight_noise = weight_noise or model_globals.get("weight_noise")
     self.dropout = dropout
-    self.builder = residual.ResidualBiRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder, residual_to_output)
-    self.serialize_params = [model, global_train_params, input_dim, layers, hidden_dim, residual_to_output, dropout]
-  def set_train(self, val):
-    self.builder.set_dropout(self.dropout if val else 0.0)
-
-class PyramidalLSTMEncoder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim=512, layers=1, hidden_dim=None, downsampling_method="skip", dropout=None, weight_noise=None, reduce_factor=2):
-    if hidden_dim is None: hidden_dim = global_train_params.get("default_layer_dim", 512)
-    if dropout is None: dropout = global_train_params.get("dropout", 0.0)
-    self.dropout = dropout
-    if weight_noise is None: weight_noise = global_train_params.get("weight_noise", 0.0)
-    self.weight_noise = weight_noise
-    self.builder = pyramidal.PyramidalRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder, downsampling_method, reduce_factor)
-    self.serialize_params = [model, global_train_params, input_dim, layers, hidden_dim, downsampling_method, reduce_factor, dropout]
+    if bidirectional:
+      self.builder = residual.ResidualBiRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder, residual_to_output)
+    else:
+      self.builder = residual.ResidualRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder, residual_to_output)
   def set_train(self, val):
     self.builder.set_dropout(self.dropout if val else 0.0)
     self.builder.set_weight_noise(self.weight_noise if val else 0.0)
 
-class ConvLSTMEncoder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim, chn_dim=32, num_filters=32, residual=True):
-    self.builder = lstm.ConvLSTMBuilder(input_dim, model, chn_dim, num_filters, residual)
-    self.serialize_params = [model, global_train_params, input_dim, chn_dim, num_filters, residual]
+class PyramidalLSTMEncoder(BuilderEncoder, Serializable):
+  yaml_tag = u'!PyramidalLSTMEncoder'
+  def __init__(self, input_dim=512, layers=1, hidden_dim=None, downsampling_method="skip", reduce_factor=2, dropout=None, weight_noise=None):
+    hidden_dim = hidden_dim or model_globals.get("default_layer_dim")
+    dropout = dropout or model_globals.get("dropout")
+    self.dropout = dropout
+    weight_noise = weight_noise or model_globals.get("weight_noise")
+    self.builder = pyramidal.PyramidalRNNBuilder(layers, input_dim, hidden_dim, model_globals.get("model"), dy.VanillaLSTMBuilder, downsampling_method, reduce_factor)
+  def set_train(self, val):
+    self.builder.set_dropout(self.dropout if val else 0.0)
+    self.builder.set_weight_noise(self.weight_noise if val else 0.0)
+
+class ConvLSTMEncoder(BuilderEncoder, Serializable):
+  yaml_tag = u'!ConvLSTMEncoder'
+  def __init__(self, input_dim, chn_dim=32, num_filters=32, residual=True):
+    self.builder = lstm.ConvLSTMBuilder(input_dim, model_globals.get("model"), chn_dim, num_filters, residual)
     
-class StridedConvEncoder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim, layers=1, chn_dim=3, num_filters=32, 
+class StridedConvEncoder(BuilderEncoder, Serializable):
+  yaml_tag = u'!StridedConvEncoder'
+  def __init__(self, input_dim, layers=1, chn_dim=3, num_filters=32, 
                output_tensor=False, batch_norm=True, stride=(2,2), nonlinearity="relu", init_gauss_var=0.1):
-    self.builder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model, chn_dim, 
+    self.builder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model_globals.get("model"), chn_dim, 
                                             num_filters, output_tensor, batch_norm,
                                             stride, nonlinearity, init_gauss_var)
-    self.serialize_params = [model, global_train_params, input_dim, layers, chn_dim, num_filters, output_tensor, batch_norm, stride, nonlinearity, init_gauss_var]
   def set_train(self, val):
     self.builder.train = val
 
-class PoolingConvEncoder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim, pooling=[None, (1,1)], chn_dim=3, num_filters=32, 
+class PoolingConvEncoder(BuilderEncoder, Serializable):
+  yaml_tag = u'!StridedConvEncoder'
+  def __init__(self, input_dim, pooling=[None, (1,1)], chn_dim=3, num_filters=32, 
                output_tensor=False, nonlinearity="relu", init_gauss_var=0.1):
-    self.builder = conv_encoder.PoolingConvEncBuilder(input_dim, model, pooling, chn_dim, num_filters, output_tensor, nonlinearity, init_gauss_var)
-    self.serialize_params = [model, global_train_params, input_dim, pooling, chn_dim, num_filters, output_tensor, nonlinearity, init_gauss_var]
+    self.builder = conv_encoder.PoolingConvEncBuilder(input_dim, model_globals.get("model"), pooling, chn_dim, num_filters, output_tensor, nonlinearity, init_gauss_var)
 
-class NetworkInNetworkBiLSTMEncoder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim, layers=1, hidden_dim=None, batch_norm=True, stride=1, num_projections=1, projection_enabled=True, nonlinearity="relu", dropout=None, weight_noise=None):
-    if hidden_dim is None: hidden_dim = global_train_params.get("default_layer_dim", 512)
-    if dropout is None: dropout = global_train_params.get("dropout", 0.0)
+class NetworkInNetworkBiLSTMEncoder(BuilderEncoder, Serializable):
+  yaml_tag = u'!NetworkInNetworkBiLSTMEncoder'
+  def __init__(self, input_dim, layers=1, hidden_dim=None, batch_norm=True, stride=1, num_projections=1, projection_enabled=True, nonlinearity="relu", dropout=None, weight_noise=None):
+    hidden_dim = hidden_dim or model_globals.get("default_layer_dim")
+    dropout = dropout or model_globals.get("dropout")
     self.dropout = dropout
-    if weight_noise is None: weight_noise = global_train_params.get("weight_noise", 0.0)
+    weight_noise = weight_noise  or model_globals.get("weight_noise")
     self.weight_noise = weight_noise
-    
-    self.builder = lstm.NetworkInNetworkBiRNNBuilder(layers, input_dim, hidden_dim, model, 
+    self.builder = lstm.NetworkInNetworkBiRNNBuilder(layers, input_dim, hidden_dim, model_globals.get("model"), 
                                             dy.VanillaLSTMBuilder, batch_norm, stride,
                                             num_projections, projection_enabled,
                                             nonlinearity)
-    self.serialize_params = [model, global_train_params, input_dim, layers, hidden_dim, batch_norm, stride, num_projections, projection_enabled, nonlinearity, dropout]
   def set_train(self, val):
     self.builder.set_dropout(self.dropout if val else 0.0)
     self.builder.set_weight_noise(self.weight_noise if val else 0.0)
 
-class ConvBiRNNBuilder(BuilderEncoder):
-  def __init__(self, model, global_train_params, input_dim, layers, hidden_dim=None, chn_dim=3, num_filters=32, filter_size_time=3, filter_size_freq=3, stride=(2,2), dropout=None):
-    if hidden_dim is None: hidden_dim = global_train_params.get("default_layer_dim", 512)
-    if dropout is None: dropout = global_train_params.get("dropout", 0.0)
+class ConvBiRNNBuilder(BuilderEncoder, Serializable):
+  yaml_tag = u'!ConvBiRNNBuilder'
+  def init_builder(self, input_dim, layers, hidden_dim=None, chn_dim=3, num_filters=32, filter_size_time=3, filter_size_freq=3, stride=(2,2), dropout=None):
+    model = model_globals.get("model")
+    hidden_dim = hidden_dim or model_globals.get("default_layer_dim")
+    dropout = dropout or model_globals.get("dropout")
     self.dropout = dropout
     self.builder = conv_encoder.ConvBiRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder,
                                             chn_dim, num_filters, filter_size_time, filter_size_freq, stride)
-    self.serialize_params = [model, global_train_params, input_dim, layers, hidden_dim, chn_dim, num_filters, filter_size_time, filter_size_freq, stride, dropout]
   def set_train(self, val):
     self.builder.train = val
     self.builder.set_dropout(self.dropout if val else 0.0)
   
-class ModularEncoder(Encoder):
-  def __init__(self, model, global_train_params, input_dim, modules):
-    self.modules = []
-    if input_dim != modules[0].get("input_dim"):
-      raise RuntimeError("Mismatching input dimensions of first module: %s != %s".format(input_dim, modules[0].get("input_dim")))
-    for module_spec in modules:
-      self.modules.append(Encoder.from_spec(module_spec, global_train_params, model))
-    self.serialize_params = [model, global_train_params, input_dim, modules]
+class ModularEncoder(Encoder, Serializable):
+  yaml_tag = u'!ModularEncoder'
+  def __init__(self, input_dim, modules):
+    self.modules = modules
+    
+  def shared_params(self):
+    return [set(["input_dim", "modules.0.input_dim"])]
 
   def transduce(self, sent, train=False):
     for i, module in enumerate(self.modules):

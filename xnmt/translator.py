@@ -4,25 +4,11 @@ import dynet as dy
 from batcher import *
 from search_strategy import *
 from vocab import Vocab
-
-class TrainTestInterface:
-  """
-  All subcomponents of the translator that behave differently at train and test time
-  should subclass this class.
-  """
-  def set_train(self, val):
-    """
-    Will be called with val=True when starting to train, and with val=False when starting
-    to evaluate.
-    :param val: bool that indicates whether we're in training mode
-    """
-    pass
-  def get_train_test_components(self):
-    """
-    :returns: list of subcomponents that implement TrainTestInterface and will be called recursively.
-    """
-    return []
-
+from serializer import Serializable, DependentInitParam
+from train_test_interface import TrainTestInterface
+from embedder import SimpleWordEmbedder
+from decoder import MlpSoftmaxDecoder
+from output import TextOutput
 
 class Translator(TrainTestInterface):
   '''
@@ -67,36 +53,52 @@ class Translator(TrainTestInterface):
                                               label_smoothing_weights)
     
 
-class DefaultTranslator(Translator):
+class DefaultTranslator(Translator, Serializable):
   '''
   A default translator based on attentional sequence-to-sequence models.
   '''
+  
+  yaml_tag = u'!DefaultTranslator'
 
-  def __init__(self, input_embedder, encoder, attender, output_embedder, decoder):
+
+  def __init__(self, src_embedder, encoder, attender, trg_embedder, decoder):
     '''Constructor.
 
-    :param input_embedder: A word embedder for the input language
+    :param src_embedder: A word embedder for the input language
     :param encoder: An encoder to generate encoded inputs
     :param attender: An attention module
-    :param output_embedder: A word embedder for the output language
+    :param trg_embedder: A word embedder for the output language
     :param decoder: A decoder
     '''
-    self.input_embedder = input_embedder
+    self.src_embedder = src_embedder
     self.encoder = encoder
     self.attender = attender
-    self.output_embedder = output_embedder
+    self.trg_embedder = trg_embedder
     self.decoder = decoder
-    self.serialize_params = [input_embedder, encoder, attender, output_embedder, decoder]
+  
+  def shared_params(self):
+    return [
+            set(["src_embedder.emb_dim", "encoder.input_dim"]),
+            set(["encoder.hidden_dim", "attender.input_dim", "decoder.input_dim"]), # TODO: encoder.hidden_dim may not always exist (e.g. for CNN encoders), need to deal with that case
+            set(["attender.state_dim", "decoder.lstm_dim"]),
+            set(["trg_embedder.emb_dim", "decoder.trg_embed_dim"]),
+            ]
+  def dependent_init_params(self):
+    return [
+            DependentInitParam(param_descr="src_embedder.vocab_size", value_fct=lambda: self.context["corpus_parser"].src_reader.vocab_size()),
+            DependentInitParam(param_descr="decoder.vocab_size", value_fct=lambda: self.context["corpus_parser"].trg_reader.vocab_size()),
+            DependentInitParam(param_descr="trg_embedder.vocab_size", value_fct=lambda: self.context["corpus_parser"].trg_reader.vocab_size()),
+            ]
 
   def get_train_test_components(self):
     return [self.encoder, self.decoder]
 
   def calc_loss(self, src, trg):
-    embeddings = self.input_embedder.embed_sent(src)
+    embeddings = self.src_embedder.embed_sent(src)
     encodings = self.encoder.transduce(embeddings)
     self.attender.start_sent(encodings)
     self.decoder.initialize()
-    self.decoder.add_input(self.output_embedder.embed(0))  # XXX: HACK, need to initialize decoder better
+    self.decoder.add_input(self.trg_embedder.embed(0))  # XXX: HACK, need to initialize decoder better
     losses = []
 
     # single mode
@@ -105,7 +107,7 @@ class DefaultTranslator(Translator):
         context = self.attender.calc_context(self.decoder.state.output())
         word_loss = self.decoder.calc_loss(context, ref_word)
         losses.append(word_loss)
-        self.decoder.add_input(self.output_embedder.embed(ref_word))
+        self.decoder.add_input(self.trg_embedder.embed(ref_word))
 
     # minibatch mode
     else:
@@ -121,24 +123,25 @@ class DefaultTranslator(Translator):
         word_loss = dy.sum_batches(word_loss * mask_exp)
         losses.append(word_loss)
 
-        self.decoder.add_input(self.output_embedder.embed(ref_word))
+        self.decoder.add_input(self.trg_embedder.embed(ref_word))
 
     return dy.esum(losses)
 
-  def translate(self, src, search_strategy=None):
+  def translate(self, src, trg_vocab, search_strategy=None):
     # Not including this as a default argument is a hack to get our documentation pipeline working
     if search_strategy == None:
       search_strategy = BeamSearch(1, len_norm=NoNormalization())
-    output = []
     if not Batcher.is_batch_sent(src):
       src = Batcher.mark_as_batch([src])
+    outputs = []
     for sents in src:
-      embeddings = self.input_embedder.embed_sent(src)
+      embeddings = self.src_embedder.embed_sent(src)
       encodings = self.encoder.transduce(embeddings)
       self.attender.start_sent(encodings)
       self.decoder.initialize()
-      output.append(search_strategy.generate_output(self.decoder, self.attender, self.output_embedder, src_length=len(sents)))
-    return output
+      output_actions = search_strategy.generate_output(self.decoder, self.attender, self.trg_embedder, src_length=len(sents))
+      outputs.append(TextOutput(output_actions, trg_vocab))
+    return outputs
 
 class NeighborLabelSmoothingTranslator(DefaultTranslator):
   """

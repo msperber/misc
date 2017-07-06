@@ -3,6 +3,8 @@ from mlp import MLP
 import inspect
 from batcher import *
 from translator import TrainTestInterface
+from serializer import Serializable
+import model_globals
 
 class Decoder(TrainTestInterface):
   '''
@@ -29,17 +31,22 @@ class RnnDecoder(Decoder):
       raise RuntimeError("Unknown decoder type {}".format(spec))
 
 
-class MlpSoftmaxDecoder(RnnDecoder):
+class MlpSoftmaxDecoder(RnnDecoder, Serializable):
   # TODO: This should probably take a softmax object, which can be normal or class-factored, etc.
   # For now the default behavior is hard coded.
-  def __init__(self, layers, input_dim, lstm_dim, mlp_hidden_dim, vocab_size, model, trg_embed_dim, dropout,
+
+  yaml_tag = u'!MlpSoftmaxDecoder'
+  
+  def __init__(self, vocab_size, layers=1, input_dim=None, lstm_dim=None, mlp_hidden_dim=None, trg_embed_dim=None, dropout=None,
                rnn_spec="lstm", residual_to_output=False):
-    self.input_dim = input_dim
-    self.dropout = dropout
-    self.fwd_lstm = RnnDecoder.rnn_from_spec(rnn_spec, layers, trg_embed_dim, lstm_dim, model, residual_to_output)
-    self.mlp = MLP(input_dim + lstm_dim, mlp_hidden_dim, vocab_size, model)
+    lstm_dim = lstm_dim or model_globals.get("default_layer_dim")
+    mlp_hidden_dim = mlp_hidden_dim or model_globals.get("default_layer_dim")
+    trg_embed_dim = trg_embed_dim or model_globals.get("default_layer_dim")
+    input_dim = input_dim or model_globals.get("default_layer_dim")
+    self.fwd_lstm = RnnDecoder.rnn_from_spec(rnn_spec, layers, trg_embed_dim, lstm_dim, model_globals.get("model"), residual_to_output)
+    self.mlp = MLP(input_dim + lstm_dim, mlp_hidden_dim, vocab_size, model_globals.get("model"))
+    self.dropout = dropout or model_globals.get("dropout")
     self.state = None
-    self.serialize_params = [layers, input_dim, lstm_dim, mlp_hidden_dim, vocab_size, model, trg_embed_dim, dropout, rnn_spec, residual_to_output]
 
   def initialize(self):
     self.state = self.fwd_lstm.initial_state()
