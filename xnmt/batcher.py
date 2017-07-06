@@ -224,6 +224,6 @@ class WordTargetBucketBatcher(TargetBucketBatcher):
 
     if temp_words != 0:
       result.append(self.pad_sent(temp_batch))
-
+    print("WordTargetBucketBatcher avg batch size: %s" % (float(sum([len(x) for x in result]))/len(result)))
     np.random.shuffle(result)
     return self.separate_src_trg(result)
