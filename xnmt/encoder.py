@@ -74,7 +74,7 @@ class PyramidalLSTMEncoder(BuilderEncoder, Serializable):
     hidden_dim = hidden_dim or model_globals.get("default_layer_dim")
     dropout = dropout or model_globals.get("dropout")
     self.dropout = dropout
-    weight_noise = weight_noise or model_globals.get("weight_noise")
+    self.weight_noise = weight_noise or model_globals.get("weight_noise")
     self.builder = pyramidal.PyramidalRNNBuilder(layers, input_dim, hidden_dim, model_globals.get("model"), dy.VanillaLSTMBuilder, downsampling_method, reduce_factor)
   def set_train(self, val):
     self.builder.set_dropout(self.dropout if val else 0.0)
