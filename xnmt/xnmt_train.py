@@ -44,12 +44,6 @@ options = [
   Option("pretrained_model_file", default_value="", help_str="Path of pre-trained model file"),
   Option("src_format", default_value="text", help_str="Format of input data: text/contvec"),
   Option("default_layer_dim", int, default_value=512, help_str="Default size to use for layers if not otherwise overridden"),
-  Option("input_word_embed_dim", IntTuple, required=False),
-  Option("output_word_embed_dim", int, required=False),
-  Option("output_state_dim", int, required=False),
-  Option("output_mlp_hidden_dim", int, required=False),
-  Option("attender_hidden_dim", int, required=False),
-  Option("attention_context_dim", int, required=False),
   Option("trainer", default_value="sgd"),
   Option("learning_rate", float, default_value=0.1),
   Option("lr_decay", float, default_value=1.0),
@@ -60,7 +54,7 @@ options = [
   Option("restart_trainer", bool, default_value=False, help_str="Restart trainer (useful for Adam) and revert weights to best dev checkpoint when applying LR decay (https://arxiv.org/pdf/1706.09733.pdf)"),
   Option("reload_between_epochs", bool, default_value=False, help_str="Reload train data between epochs (useful when sampling from train data, or with noisy input data via an external tool"),
   Option("dropout", float, default_value=0.0),
-  Option("weight_noise", float, default_value=0.0), # TODO:
+  Option("weight_noise", float, default_value=0.0),
   Option("subsample_epoch", int, default_value=-1, 
          help_str="For each epoch, choose this many sentences at random (useful to train on large data while not keeping all in memory)"), # TODO:
   Option("model", dict, default_value={}),  
