@@ -106,7 +106,7 @@ class SimpleWordEmbedder(Embedder, Serializable):
     if emb_dim is None: emb_dim = model_globals.get("default_layer_dim")
     self.weight_noise = weight_noise or model_globals.get("weight_noise")
     self.emb_dim = emb_dim
-    self.embeddings = model_globals.get("model").add_lookup_parameters((vocab_size, emb_dim))
+    self.embeddings = model_globals.get("dynet_param_collection").param_col.add_lookup_parameters((vocab_size, emb_dim))
 
   def embed(self, x):
     # single mode
