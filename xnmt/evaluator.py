@@ -263,8 +263,8 @@ class WEREvaluator(Evaluator):
     :return: tuple (levenshtein distance, reference length) 
     """
         if not self.case_sensitive:
-            hyp_sent = map(lambda w: w.lower(), hyp_sent)
-            ref_sent = map(lambda w: w.lower(), ref_sent)
+            hyp_sent = list(map(lambda w: w.lower(), hyp_sent))
+            ref_sent = list(map(lambda w: w.lower(), ref_sent))
         if self.exclude_punctuation:
             hyp_sent = filter(lambda s : re.match('\w+', s, flags=re.UNICODE), hyp_sent)
             ref_sent = filter(lambda s : re.match('\w+', s, flags=re.UNICODE), ref_sent)
