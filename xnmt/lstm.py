@@ -3,8 +3,8 @@ import dynet as dy
 def builder_for_spec(spec):
   if spec=="vanilla":
     return dy.VanillaLSTMBuilder
-  elif spec=="low-mem":
-    return LowMemLSTMBuilder
+  elif spec=="compact":
+    return dy.CompactVanillaLSTMBuilder
   
 
 class LSTMState(object):
@@ -19,14 +19,6 @@ class LSTMState(object):
       h_t, c_t = self.builder.add_input(x_t, self.prev_state)
       return LSTMState(self.builder, h_t, c_t, self.state_idx+1, prev_state=self)
       
-#    def add_inputs(self, xs):
-#        states = []
-#        cur = self
-#        for x in xs:
-#            cur = cur.add_input(x)
-#            states.append(cur)
-#        return states
-    
     def transduce(self, xs):
         return self.builder.transduce(xs)
 
