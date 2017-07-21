@@ -8,7 +8,7 @@ def builder_for_spec(spec):
   if spec=="vanilla":
     return dy.VanillaLSTMBuilder
   elif spec=="compact":
-    return dy.VanillaLSTMBuilder
+    return dy.CompactVanillaLSTMBuilder
   else:
     raise Exception("unknown LSTM spec %s" % spec)
   
