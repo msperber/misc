@@ -1,8 +1,9 @@
 import sys
 import os
 import io
+import six
 
-class Tee:
+class Tee(object):
   """
   Emulates a standard output or error streams. Calls to write on that stream will result
   in printing to stdout as well as logging to a file.
@@ -35,7 +36,7 @@ class Tee:
     self.close()
 
   def write(self, data):
-    self.file.write(unicode(data))
+    self.file.write(six.u(data))
     self.stdstream.write(" " * self.indent + data)
     self.flush()
 

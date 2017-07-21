@@ -1,10 +1,10 @@
 import dynet as dy
 from mlp import MLP
-import inspect
 from batcher import *
 from translator import TrainTestInterface
 from serializer import Serializable
 import model_globals
+import lstm
 
 class Decoder(TrainTestInterface):
   '''
@@ -18,15 +18,18 @@ class Decoder(TrainTestInterface):
 
   def calc_loss(self, x, ref_action):
     raise NotImplementedError('calc_loss must be implemented in Decoder subclasses')
+  def initialize(self):
+    pass
 
 class RnnDecoder(Decoder):
   @staticmethod
   def rnn_from_spec(spec, num_layers, input_dim, hidden_dim, model, residual_to_output):
     decoder_type = spec.lower()
+    base_builder = lstm.builder_for_spec(model_globals.get("base_lstm_builder"))
     if decoder_type == "lstm":
-      return dy.VanillaLSTMBuilder(num_layers, input_dim, hidden_dim, model)
+      return base_builder(num_layers, input_dim, hidden_dim, model)
     elif decoder_type == "residuallstm":
-      return residual.ResidualRNNBuilder(num_layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder, residual_to_output)
+      return residual.ResidualRNNBuilder(num_layers, input_dim, hidden_dim, model, base_builder, residual_to_output)
     else:
       raise RuntimeError("Unknown decoder type {}".format(spec))
 
@@ -36,7 +39,7 @@ class MlpSoftmaxDecoder(RnnDecoder, Serializable):
   # For now the default behavior is hard coded.
 
   yaml_tag = u'!MlpSoftmaxDecoder'
-  
+
   def __init__(self, vocab_size, layers=1, input_dim=None, lstm_dim=None, mlp_hidden_dim=None, trg_embed_dim=None, dropout=None,
                rnn_spec="lstm", residual_to_output=False):
     lstm_dim = lstm_dim or model_globals.get("default_layer_dim")
@@ -63,7 +66,7 @@ class MlpSoftmaxDecoder(RnnDecoder, Serializable):
   def calc_loss(self, context, ref_action):
     scores = self.get_scores(context)
     # single mode
-    if not Batcher.is_batch_word(ref_action):
+    if not Batcher.is_batched(ref_action):
       return dy.pickneglogsoftmax(scores, ref_action)
     # minibatch mode
     else:

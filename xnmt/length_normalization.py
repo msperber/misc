@@ -3,7 +3,7 @@ from __future__ import division, generators
 import numpy as np
 from scipy.stats import norm
 
-class LengthNormalization:
+class LengthNormalization(object):
   '''
   A template class to generate translation from the output probability model.
   '''
@@ -19,7 +19,7 @@ class LengthNormalization:
     """
     :param score_so_far:
     :param score_to_add:
-    :param new_len: length of output hyp with current word already appended 
+    :param new_len: length of output hyp with current word already appended
     :returns: new score after applying score_to_add to score_so_far
     normalization step applied during the search
     """

@@ -3,7 +3,7 @@ from batcher import Batcher
 
 class ExpressionSequence(object):
   """A class to represent a sequence of expressions.
-  
+
   Internal representation is either a list of expressions or a single tensor or both.
   If necessary, both forms of representation are created from the other on demand.
   """
@@ -49,6 +49,14 @@ class ExpressionSequence(object):
     if self.expr_list: return self.expr_list[key]
     else: return dy.pick(self.expr_tensor, key)
 
+  def as_list(self):
+    """Get a list.
+    :returns: the whole sequence as a list with each element one of the embeddings.
+    """
+    if self.expr_list is None:
+      self.expr_list = [self[i] for i in range(len(self))]
+    return self.expr_list
+
   def as_tensor(self):
     """Get a tensor.
     :returns: the whole sequence as a tensor expression where each column is one of the embeddings.
@@ -67,13 +75,13 @@ class LazyNumpyExpressionSequence(ExpressionSequence):
     :param lazy_data: numpy array, or Batcher.Batch of numpy arrays
     """
     self.lazy_data = lazy_data
-    self.expr_list, self.expr_tensor = None, None 
+    self.expr_list, self.expr_tensor = None, None
   def __len__(self):
     if self.expr_list or self.expr_tensor:
       return super(LazyNumpyExpressionSequence, self).__len__()
     else:
-      if Batcher.is_batch_sent(self.lazy_data):
-        return self.lazy_data[0].shape[0] 
+      if Batcher.is_batched(self.lazy_data):
+        return self.lazy_data[0].shape[0]
       else: return self.lazy_data.shape[0]
   def __iter__(self):
     if not (self.expr_list or self.expr_tensor):
@@ -81,13 +89,13 @@ class LazyNumpyExpressionSequence(ExpressionSequence):
     return super(LazyNumpyExpressionSequence, self).__iter__()
   def __getitem__(self, key):
     if self.expr_list or self.expr_tensor:
-      return super(LazyNumpyExpressionSequence, self).__getitem__()
+      return super(LazyNumpyExpressionSequence, self).__getitem__(key)
     else:
-      if Batcher.is_batch_sent(self.lazy_data):
+      if Batcher.is_batched(self.lazy_data):
         return dy.inputTensor([self.lazy_data[batch][key] for batch in range(len(self.lazy_data))], batched=True)
       else:
         return dy.inputTensor(self.lazy_data[key], batched=False)
   def as_tensor(self):
     if not (self.expr_list or self.expr_tensor):
-      self.expr_tensor = dy.inputTensor(self.lazy_data, batched=self.batched)
+      self.expr_tensor = dy.inputTensor(self.lazy_data, batched=Batcher.is_batched(self.lazy_data))
     return super(LazyNumpyExpressionSequence, self).as_tensor()

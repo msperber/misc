@@ -9,6 +9,7 @@ from train_test_interface import TrainTestInterface
 from embedder import SimpleWordEmbedder
 from decoder import MlpSoftmaxDecoder
 from output import TextOutput
+from batcher import Batcher
 
 class Translator(TrainTestInterface):
   '''
@@ -57,7 +58,7 @@ class DefaultTranslator(Translator, Serializable):
   '''
   A default translator based on attentional sequence-to-sequence models.
   '''
-  
+
   yaml_tag = u'!DefaultTranslator'
 
 
@@ -75,7 +76,7 @@ class DefaultTranslator(Translator, Serializable):
     self.attender = attender
     self.trg_embedder = trg_embedder
     self.decoder = decoder
-  
+
   def shared_params(self):
     return [
             set(["src_embedder.emb_dim", "encoder.input_dim"]),
@@ -93,16 +94,20 @@ class DefaultTranslator(Translator, Serializable):
   def get_train_test_components(self):
     return [self.encoder, self.decoder]
 
-  def calc_loss(self, src, trg):
+  def calc_loss(self, src, trg, info=None):
     embeddings = self.src_embedder.embed_sent(src)
     encodings = self.encoder.transduce(embeddings)
     self.attender.start_sent(encodings)
     self.decoder.initialize()
-    self.decoder.add_input(self.trg_embedder.embed(0))  # XXX: HACK, need to initialize decoder better
+    if Batcher.is_batched(src):
+      batch_size = len(src)
+      self.decoder.add_input(self.trg_embedder.embed(Batcher.mark_as_batch([0] * batch_size)))  # XXX: HACK, need to initialize decoder better
+    else:
+      self.decoder.add_input(self.trg_embedder.embed(0))  # XXX: HACK, need to initialize decoder better
     losses = []
 
     # single mode
-    if not Batcher.is_batch_sent(src):
+    if not Batcher.is_batched(src):
       for ref_word in trg:
         context = self.attender.calc_context(self.decoder.state.output())
         word_loss = self.decoder.calc_loss(context, ref_word)
@@ -127,11 +132,11 @@ class DefaultTranslator(Translator, Serializable):
 
     return dy.esum(losses)
 
-  def translate(self, src, trg_vocab, search_strategy=None):
+  def translate(self, src, trg_vocab, search_strategy=None, report=None):
     # Not including this as a default argument is a hack to get our documentation pipeline working
     if search_strategy == None:
       search_strategy = BeamSearch(1, len_norm=NoNormalization())
-    if not Batcher.is_batch_sent(src):
+    if not Batcher.is_batched(src):
       src = Batcher.mark_as_batch([src])
     outputs = []
     for sents in src:
@@ -140,6 +145,9 @@ class DefaultTranslator(Translator, Serializable):
       self.attender.start_sent(encodings)
       self.decoder.initialize()
       output_actions = search_strategy.generate_output(self.decoder, self.attender, self.trg_embedder, src_length=len(sents))
+      if report != None:
+        report.trg_words = [trg_vocab[x] for x in output_actions[1:]] # The first token is the start token
+        report.attentions = self.attender.attention_vecs
       outputs.append(TextOutput(output_actions, trg_vocab))
     return outputs
 

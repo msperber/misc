@@ -40,14 +40,15 @@ class LSTMEncoder(BuilderEncoder, Serializable):
     self.layers = layers
     self.hidden_dim = hidden_dim
     self.dropout = dropout
+    base_builder = lstm.builder_for_spec(model_globals.get("base_lstm_builder"))
     if bidirectional:
-      self.builder = dy.BiRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder)
+      self.builder = dy.BiRNNBuilder(layers, input_dim, hidden_dim, model, base_builder)
     else:
-      self.builder = dy.VanillaLSTMBuilder(layers, input_dim, hidden_dim, model)
+      self.builder = base_builder(layers, input_dim, hidden_dim, model)
   def set_train(self, val):
     self.builder.set_dropout(self.dropout if val else 0.0)
-    self.builder.set_weight_noise(self.weight_noise if val else 0.0)
-
+    if self.weight_noise > 0.0:
+      self.builder.set_weight_noise(self.weight_noise if val else 0.0)
 
 class ResidualLSTMEncoder(BuilderEncoder, Serializable):
   yaml_tag = u'!ResidualLSTMEncoder'
@@ -57,13 +58,15 @@ class ResidualLSTMEncoder(BuilderEncoder, Serializable):
     dropout = dropout or model_globals.get("dropout")
     weight_noise = weight_noise or model_globals.get("weight_noise")
     self.dropout = dropout
+    base_builder = lstm.builder_for_spec(model_globals.get("base_lstm_builder"))
     if bidirectional:
-      self.builder = residual.ResidualBiRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder, residual_to_output)
+      self.builder = residual.ResidualBiRNNBuilder(layers, input_dim, hidden_dim, model, base_builder, residual_to_output)
     else:
-      self.builder = residual.ResidualRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder, residual_to_output)
+      self.builder = residual.ResidualRNNBuilder(layers, input_dim, hidden_dim, model, base_builder, residual_to_output)
   def set_train(self, val):
     self.builder.set_dropout(self.dropout if val else 0.0)
-    self.builder.set_weight_noise(self.weight_noise if val else 0.0)
+    if self.weight_noise > 0.0:
+      self.builder.set_weight_noise(self.weight_noise if val else 0.0)
 
 class PyramidalLSTMEncoder(BuilderEncoder, Serializable):
   yaml_tag = u'!PyramidalLSTMEncoder'
@@ -72,10 +75,12 @@ class PyramidalLSTMEncoder(BuilderEncoder, Serializable):
     dropout = dropout or model_globals.get("dropout")
     self.dropout = dropout
     self.weight_noise = weight_noise or model_globals.get("weight_noise")
-    self.builder = pyramidal.PyramidalRNNBuilder(layers, input_dim, hidden_dim, model_globals.dynet_param_collection.param_col, dy.VanillaLSTMBuilder, downsampling_method, reduce_factor)
+    base_builder = lstm.builder_for_spec(model_globals.get("base_lstm_builder"))
+    self.builder = pyramidal.PyramidalRNNBuilder(layers, input_dim, hidden_dim, model_globals.dynet_param_collection.param_col, base_builder, downsampling_method, reduce_factor)
   def set_train(self, val):
     self.builder.set_dropout(self.dropout if val else 0.0)
-    self.builder.set_weight_noise(self.weight_noise if val else 0.0)
+    if self.weight_noise > 0.0:
+      self.builder.set_weight_noise(self.weight_noise if val else 0.0)
 
 class ConvLSTMEncoder(BuilderEncoder, Serializable):
   yaml_tag = u'!ConvLSTMEncoder'
@@ -106,13 +111,15 @@ class NetworkInNetworkBiLSTMEncoder(BuilderEncoder, Serializable):
     self.dropout = dropout
     weight_noise = weight_noise  or model_globals.get("weight_noise")
     self.weight_noise = weight_noise
+    base_builder = lstm.builder_for_spec(model_globals.get("base_lstm_builder"))
     self.builder = lstm.NetworkInNetworkBiRNNBuilder(layers, input_dim, hidden_dim, model_globals.get("model"), 
-                                            dy.VanillaLSTMBuilder, batch_norm, stride,
+                                            base_builder, batch_norm, stride,
                                             num_projections, projection_enabled,
                                             nonlinearity)
   def set_train(self, val):
     self.builder.set_dropout(self.dropout if val else 0.0)
-    self.builder.set_weight_noise(self.weight_noise if val else 0.0)
+    if self.weight_noise > 0.0:
+      self.builder.set_weight_noise(self.weight_noise if val else 0.0)
 
 class ConvBiRNNBuilder(BuilderEncoder, Serializable):
   yaml_tag = u'!ConvBiRNNBuilder'
@@ -121,17 +128,18 @@ class ConvBiRNNBuilder(BuilderEncoder, Serializable):
     hidden_dim = hidden_dim or model_globals.get("default_layer_dim")
     dropout = dropout or model_globals.get("dropout")
     self.dropout = dropout
-    self.builder = conv_encoder.ConvBiRNNBuilder(layers, input_dim, hidden_dim, model, dy.VanillaLSTMBuilder,
+    base_builder = lstm.builder_for_spec(model_globals.get("base_lstm_builder"))
+    self.builder = conv_encoder.ConvBiRNNBuilder(layers, input_dim, hidden_dim, model, base_builder,
                                             chn_dim, num_filters, filter_size_time, filter_size_freq, stride)
   def set_train(self, val):
     self.builder.train = val
     self.builder.set_dropout(self.dropout if val else 0.0)
-  
+
 class ModularEncoder(Encoder, Serializable):
   yaml_tag = u'!ModularEncoder'
   def __init__(self, input_dim, modules):
     self.modules = modules
-    
+
   def shared_params(self):
     return [set(["input_dim", "modules.0.input_dim"])]
 
@@ -147,3 +155,6 @@ class ModularEncoder(Encoder, Serializable):
 
   def get_train_test_components(self):
     return self.modules
+
+
+

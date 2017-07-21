@@ -3,7 +3,7 @@ import numpy as np
 from length_normalization import *
 from vocab import Vocab
 
-class SearchStrategy:
+class SearchStrategy(object):
   '''
   A template class to generate translation from the output probability model.
   '''
@@ -62,8 +62,8 @@ class BeamSearch(SearchStrategy):
         for cur_id in top_ids:
           new_list = list(hyp.id_list)
           new_list.append(cur_id)
-          new_set.append(self.Hypothesis(self.len_norm.normalize_partial(hyp.score, score[cur_id], len(new_list)), 
-                                         new_list, 
+          new_set.append(self.Hypothesis(self.len_norm.normalize_partial(hyp.score, score[cur_id], len(new_list)),
+                                         new_list,
                                          decoder.state))
 
       active_hyp = sorted(new_set, key=lambda x: x.score, reverse=True)[:self.b]
