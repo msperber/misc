@@ -57,8 +57,6 @@ options = [
   Option("reload_between_epochs", bool, default_value=False, help_str="Reload train data between epochs (useful when sampling from train data, or with noisy input data via an external tool"),
   Option("dropout", float, default_value=0.0),
   Option("weight_noise", float, default_value=0.0),
-  Option("subsample_epoch", int, default_value=-1, 
-         help_str="For each epoch, choose this many sentences at random (useful to train on large data while not keeping all in memory)"), # TODO:
   Option("model", dict, default_value={}),  
   Option("base_lstm_builder", default_value="vanilla", help_str="Which LSTM implementation to use: vanilla (C++-based builder), custom (Python-port of vanilla), low-mem (based on the new LSTM nodes)"),
 ]
