@@ -31,7 +31,7 @@ class BatchNorm(object):
     param_bn_gamma = dy.parameter(self.bn_gamma)
     param_bn_beta = dy.parameter(self.bn_beta)
     if train:
-      bn_mean = dy.moment_dim(input_expr, self.get_stat_dimensions(), 1, True) # mean over batches, time and freq dimensions
+      bn_mean = dy.moment_dim(input_expr, self.get_stat_dimensions(), 1, True)
       neg_bn_mean_reshaped = -dy.reshape(-bn_mean, self.get_normalizer_dimensionality())
       self.bn_population_running_mean += -BatchNorm.bn_momentum*self.bn_population_running_mean + BatchNorm.bn_momentum * bn_mean.npvalue()
 #          bn_std = dy.std_dim(cnn_layer, self.get_stat_dimensions(), True) # currently unusably slow, but would be less wasteful memory-wise

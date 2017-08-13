@@ -85,23 +85,26 @@ class PyramidalLSTMEncoder(BuilderEncoder, Serializable):
 class ConvLSTMEncoder(BuilderEncoder, Serializable):
   yaml_tag = u'!ConvLSTMEncoder'
   def __init__(self, input_dim, chn_dim=32, num_filters=32, residual=True):
-    self.builder = lstm.ConvLSTMBuilder(input_dim, model_globals.get("model"), chn_dim, num_filters, residual)
+    model = model_globals.dynet_param_collection.param_col
+    self.builder = lstm.ConvLSTMBuilder(input_dim, model, chn_dim, num_filters, residual)
     
 class StridedConvEncoder(BuilderEncoder, Serializable):
   yaml_tag = u'!StridedConvEncoder'
   def __init__(self, input_dim, layers=1, chn_dim=3, num_filters=32, 
                output_tensor=False, batch_norm=True, stride=(2,2), nonlinearity="relu", init_gauss_var=0.1):
-    self.builder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model_globals.get("model"), chn_dim, 
+    model = model_globals.dynet_param_collection.param_col
+    self.builder = conv_encoder.StridedConvEncBuilder(layers, input_dim, model, chn_dim, 
                                             num_filters, output_tensor, batch_norm,
                                             stride, nonlinearity, init_gauss_var)
   def set_train(self, val):
     self.builder.train = val
 
 class PoolingConvEncoder(BuilderEncoder, Serializable):
-  yaml_tag = u'!StridedConvEncoder'
+  yaml_tag = u'!PoolingConvEncoder'
   def __init__(self, input_dim, pooling=[None, (1,1)], chn_dim=3, num_filters=32, 
                output_tensor=False, nonlinearity="relu", init_gauss_var=0.1):
-    self.builder = conv_encoder.PoolingConvEncBuilder(input_dim, model_globals.get("model"), pooling, chn_dim, num_filters, output_tensor, nonlinearity, init_gauss_var)
+    model = model_globals.dynet_param_collection.param_col
+    self.builder = conv_encoder.PoolingConvEncBuilder(input_dim, model, pooling, chn_dim, num_filters, output_tensor, nonlinearity, init_gauss_var)
 
 class NetworkInNetworkBiLSTMEncoder(BuilderEncoder, Serializable):
   yaml_tag = u'!NetworkInNetworkBiLSTMEncoder'
@@ -112,7 +115,8 @@ class NetworkInNetworkBiLSTMEncoder(BuilderEncoder, Serializable):
     weight_noise = weight_noise  or model_globals.get("weight_noise")
     self.weight_noise = weight_noise
     base_builder = lstm.builder_for_spec(model_globals.get("base_lstm_builder"))
-    self.builder = lstm.NetworkInNetworkBiRNNBuilder(layers, input_dim, hidden_dim, model_globals.get("model"), 
+    model = model_globals.dynet_param_collection.param_col
+    self.builder = lstm.NetworkInNetworkBiRNNBuilder(layers, input_dim, hidden_dim, model, 
                                             base_builder, batch_norm, stride,
                                             num_projections, projection_enabled,
                                             nonlinearity)

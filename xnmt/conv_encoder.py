@@ -10,16 +10,16 @@ class ConvBiRNNBuilder(object):
   Then, we add a configurable number of bidirectional RNN layers on top.
   """
 
-  def __init__(self, num_layers, input_dim, hidden_dim, model, rnn_builder_factory,
+  def __init__(self, layers, input_dim, hidden_dim, model, rnn_builder_factory,
                chn_dim, num_filters, filter_size_time, filter_size_freq, stride):
     """
-    :param num_layers: depth of the RNN
+    :param layers: depth of the RNN
     :param input_dim: size of the inputs
     :param hidden_dim: size of the outputs (and intermediate RNN layer representations)
     :param model
     :param rnn_builder_factory: RNNBuilder subclass, e.g. LSTMBuilder
     """
-    assert num_layers > 0
+    assert layers > 0
     assert hidden_dim % 2 == 0
     assert input_dim % chn_dim == 0
 
@@ -43,7 +43,7 @@ class ConvBiRNNBuilder(object):
     f = rnn_builder_factory(1, conv_dim_out, hidden_dim / 2, model)
     b = rnn_builder_factory(1, conv_dim_out, hidden_dim / 2, model)
     self.builder_layers.append((f, b))
-    for _ in xrange(num_layers - 1):
+    for _ in xrange(layers - 1):
       f = rnn_builder_factory(1, hidden_dim, hidden_dim / 2, model)
       b = rnn_builder_factory(1, hidden_dim, hidden_dim / 2, model)
       self.builder_layers.append((f, b))
@@ -96,12 +96,12 @@ class StridedConvEncBuilder(object):
   """
   Implements several strided CNN layers.
   """
-  
-  def __init__(self, num_layers, input_dim, model, chn_dim=3, num_filters=32, 
+    
+  def __init__(self, layers, input_dim, model, chn_dim=3, num_filters=32, 
                output_tensor=False, batch_norm=False, stride=(2,2), nonlinearity="relu",
                init_gauss_var=0.1):
     """
-    :param num_layers: encoder depth
+    :param layers: encoder depth
     :param input_dim: size of the inputs, before factoring out the channels.
                       We will end up with a convolutional layer of size num_steps X input_dim/chn_dim X chn_dim 
     :param model
@@ -112,10 +112,10 @@ class StridedConvEncBuilder(object):
     :param stride:
     :param nonlinearity: "rely" / "maxout" / None
     """
-    assert num_layers > 0
+    assert layers > 0
     assert input_dim % chn_dim == 0
     
-    self.num_layers = num_layers
+    self.layers = layers
     self.chn_dim = chn_dim
     self.freq_dim = input_dim / chn_dim
     self.num_filters = num_filters
@@ -133,7 +133,7 @@ class StridedConvEncBuilder(object):
     self.filters_layers = []
     self.bn_alt_layers = []
     self.filters_alt_layers = []
-    for layer_i in range(num_layers):
+    for layer_i in range(layers):
       filters = model.add_parameters(dim=(self.filter_size_time,
                                           self.filter_size_freq,
                                           self.chn_dim if layer_i==0 else self.num_filters,
@@ -154,7 +154,7 @@ class StridedConvEncBuilder(object):
   
   def get_output_dim(self):
     conv_dim = self.freq_dim
-    for layer_i in range(self.num_layers):
+    for layer_i in range(self.layers):
       conv_dim = int(math.ceil(float(conv_dim - self.filter_size_freq + 1) / float(self.get_stride_for_layer(layer_i)[1])))
     return conv_dim * self.num_filters
   
@@ -167,7 +167,7 @@ class StridedConvEncBuilder(object):
   
   def get_output_len(self, input_len):
     conv_dim = input_len
-    for layer_i in range(self.num_layers):
+    for layer_i in range(self.layers):
       conv_dim = int(math.ceil(float(conv_dim - self.filter_size_time + 1) / float(self.get_stride_for_layer(layer_i)[0])))
     return conv_dim
 
@@ -232,7 +232,7 @@ class PoolingConvEncBuilder(object):
   def __init__(self, input_dim, model, pooling=[None, (1,1)], chn_dim=3, num_filters=32, 
                output_tensor=False, nonlinearity="relu", init_gauss_var=0.1):
     """
-    :param num_layers: encoder depth
+    :param layers: encoder depth
     :param input_dim: size of the inputs, before factoring out the channels.
                       We will end up with a convolutional layer of size num_steps X input_dim/chn_dim X chn_dim 
     :param model
@@ -243,8 +243,8 @@ class PoolingConvEncBuilder(object):
     """
     assert input_dim % chn_dim == 0
     
-    self.num_layers = len(pooling)
-    assert self.num_layers > 0
+    self.layers = len(pooling)
+    assert self.layers > 0
     self.chn_dim = chn_dim
     self.freq_dim = input_dim / chn_dim
     self.num_filters = num_filters
@@ -259,7 +259,7 @@ class PoolingConvEncBuilder(object):
     self.filters_layers = []
     self.bn_alt_layers = []
     self.filters_alt_layers = []
-    for layer_i in range(self.num_layers):
+    for layer_i in range(self.layers):
       filters = model.add_parameters(dim=(self.filter_size_time,
                                           self.filter_size_freq,
                                           self.chn_dim if layer_i==0 else self.num_filters,
@@ -276,7 +276,7 @@ class PoolingConvEncBuilder(object):
   
   def get_output_dim(self):
     conv_dim = self.freq_dim
-    for layer_i in range(self.num_layers):
+    for layer_i in range(self.layers):
       conv_dim = int(math.ceil(float(conv_dim - self.filter_size_freq + 1) / float(self.get_stride_for_layer(layer_i)[1])))
     return conv_dim * self.num_filters
   
@@ -288,7 +288,7 @@ class PoolingConvEncBuilder(object):
   
   def get_output_len(self, input_len):
     conv_dim = input_len
-    for layer_i in range(self.num_layers):
+    for layer_i in range(self.layers):
       conv_dim = int(math.ceil(float(conv_dim - self.filter_size_time + 1) / float(self.get_stride_for_layer(layer_i)[0])))
     return conv_dim
 
