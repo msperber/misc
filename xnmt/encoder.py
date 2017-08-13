@@ -42,7 +42,8 @@ class LSTMEncoder(BuilderEncoder, Serializable):
     self.dropout = dropout
     base_builder = lstm.CustomCompactLSTMBuilder #lstm.builder_for_spec(model_globals.get("base_lstm_builder"))
     if bidirectional:
-      self.builder = dy.BiRNNBuilder(layers, input_dim, hidden_dim, model, base_builder)
+      self.builder = lstm.BiCompactLSTMBuilder(layers, input_dim, hidden_dim, model)
+#      self.builder = dy.BiRNNBuilder(layers, input_dim, hidden_dim, model, base_builder)
     else:
       self.builder = base_builder(layers, input_dim, hidden_dim, model)
   def set_train(self, val):

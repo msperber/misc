@@ -103,21 +103,67 @@ class CustomCompactLSTMBuilder(object):
     h_t = dy.vanilla_lstm_h(c_t, gates_t)
     return h_t, c_t
     
-  def transduce(self, xs):
+  def transduce(self, xs, xs2=None):
     xs = list(xs)
+    if xs2 is not None:
+      assert len(xs) == len(xs2)
+      xs2 = list(xs2)
     h = [dy.zeroes(dim=(self.hidden_dim,), batch_size=xs[0].dim()[1])]
     c = [dy.zeroes(dim=(self.hidden_dim,), batch_size=xs[0].dim()[1])]
-    for x_t in xs:
+    for pos_i in range(len(xs)):
+      if xs2 is None:
+        x_t = [xs[pos_i]]
+      else:
+        x_t = [xs[pos_i], xs2[pos_i]]
       if self.dropout_rate > 0.0:
         # apply dropout according to https://arxiv.org/abs/1512.05287 (tied weights)
-        gates_t = dy.vanilla_lstm_gates_dropout([x_t], h[-1], self.Wx, self.Wh, self.b, self.dropout_mask_x, self.dropout_mask_h, self.weightnoise_std)
+        gates_t = dy.vanilla_lstm_gates_dropout(x_t, h[-1], self.Wx, self.Wh, self.b, self.dropout_mask_x, self.dropout_mask_h, self.weightnoise_std)
       else:
-        gates_t = dy.vanilla_lstm_gates([x_t], h[-1], self.Wx, self.Wh, self.b, self.weightnoise_std)
+        gates_t = dy.vanilla_lstm_gates(x_t, h[-1], self.Wx, self.Wh, self.b, self.weightnoise_std)
       c_t = dy.vanilla_lstm_c(c[-1], gates_t)
       c.append(c_t)
       h.append(dy.vanilla_lstm_h(c_t, gates_t))
     return h
   
+class BiCompactLSTMBuilder:
+  def __init__(self, num_layers, input_dim, hidden_dim, model):
+    self.num_layers = num_layers
+    assert hidden_dim % 2 == 0
+    self.forward_layers = [CustomCompactLSTMBuilder(1, input_dim, hidden_dim/2, model)]
+    self.backward_layers = [CustomCompactLSTMBuilder(1, input_dim, hidden_dim/2, model)]
+    self.forward_layers += [CustomCompactLSTMBuilder(1, hidden_dim, hidden_dim/2, model) for _ in range(num_layers-1)]
+    self.backward_layers += [CustomCompactLSTMBuilder(1, hidden_dim, hidden_dim/2, model) for _ in range(num_layers-1)]
+
+  def set_dropout(self, p):
+    for layer in self.forward_layers + self.backward_layers:
+      layer.set_dropout(p)
+
+  def disable_dropout(self):
+    for layer in self.forward_layers + self.backward_layers:
+      layer.disable_dropout()
+
+  def set_weightnoise(self, std):
+    for layer in self.forward_layers + self.backward_layers:
+      layer.set_weightnoise(std)
+
+  def disable_weightnoise(self):
+    for layer in self.forward_layers + self.backward_layers:
+      layer.disable_weightnoise()
+
+  def transduce(self, es):
+    # first layer
+    forward_es = self.forward_layers[0].initial_state().transduce(es)
+    rev_backward_es = self.backward_layers[0].initial_state().transduce(reversed(es))
+
+    for layer_i in range(1, len(self.forward_layers)):
+      new_forward_es = self.forward_layers[layer_i].initial_state().transduce(forward_es, reversed(rev_backward_es))
+      rev_backward_es = reversed(self.backward_layers[layer_i].initial_state().transduce(reversed(forward_es), rev_backward_es))
+      forward_es = new_forward_es
+      
+    return [dy.concatenate([f,b]) for f,b in zip(forward_es, reversed(rev_backward_es))]
+
+  def initial_state(self):
+    return PseudoState(self)
 
 
 class CustomLSTMBuilder(object):
