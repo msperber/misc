@@ -40,7 +40,7 @@ class LSTMEncoder(BuilderEncoder, Serializable):
     self.layers = layers
     self.hidden_dim = hidden_dim
     self.dropout = dropout
-    base_builder = lstm.builder_for_spec(model_globals.get("base_lstm_builder"))
+    base_builder = lstm.CustomCompactLSTMBuilder #lstm.builder_for_spec(model_globals.get("base_lstm_builder"))
     if bidirectional:
       self.builder = dy.BiRNNBuilder(layers, input_dim, hidden_dim, model, base_builder)
     else:

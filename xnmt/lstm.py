@@ -35,13 +35,9 @@ class LSTMState(object):
     def get_state_idx(self): return self.state_idx
 
 
-class LowMemLSTMBuilder(object):
-  """
-  This is a test of the new dynet LSTM node collection.
-  Currently, it does not support multiple layers or dropout or weight noise.
-  """
+class CustomCompactLSTMBuilder(object):
   def __init__(self, layers, input_dim, hidden_dim, model):
-    if layers!=1: raise RuntimeError("LowMemLSTMBuilder supports only exactly one layer")
+    if layers!=1: raise RuntimeError("CustomCompactLSTMBuilder supports only exactly one layer")
     self.input_dim = input_dim
     self.hidden_dim = hidden_dim
   
@@ -50,21 +46,42 @@ class LowMemLSTMBuilder(object):
     self.p_Wh = model.add_parameters(dim=(hidden_dim*4, hidden_dim))
     self.p_b  = model.add_parameters(dim=(hidden_dim*4,), init=dy.ConstInitializer(0.0))
     
-  def whoami(self): return "LowMemLSTMBuilder"
+    self.dropout_rate = 0.0
+    self.weightnoise_std = 0.0
+
+  def whoami(self): return "CustomCompactLSTMBuilder"
   
   def set_dropout(self, p):
-    if p>0.0: raise RuntimeError("LowMemLSTMBuilder does not support dropout")
+    if not 0.0 <= p <= 1.0:
+      raise Exception("dropout rate must be a probability (>=0 and <=1)")
+    self.dropout_rate = p
   def disable_dropout(self):
-    pass
+    self.dropout_rate = 0.0
+    
+  def set_weightnoise(self, std):
+    if not 0.0 <= std:
+      raise Exception("weight noise must have standard deviation >=0")
+    self.weightnoise_std = std
+  def disable_weightnoise(self):
+    self.weightnoise_std = 0.0
+    
   def initial_state(self, vecs=None):
     self.Wx = dy.parameter(self.p_Wx)
     self.Wh = dy.parameter(self.p_Wh)
     self.b = dy.parameter(self.p_b)
+    self.set_dropout_masks() # TODO: check the paper if we should do different mask for each batch?
     if vecs is not None:
       assert len(vecs)==2
       return LSTMState(self, h_t=vecs[0], c_t=vecs[1])
     else:
       return LSTMState(self)
+  def set_dropout_masks(self, batch_size=1):
+    if self.dropout_rate > 0.0:
+      retention_rate = 1.0 - self.dropout_rate
+      scale = 1.0 / retention_rate
+      self.dropout_mask_x = dy.random_bernoulli((self.input_dim,), retention_rate, scale, batch_size=batch_size)
+      self.dropout_mask_h = dy.random_bernoulli((self.hidden_dim,), retention_rate, scale, batch_size=batch_size)
+    
   def add_input(self, x_t, prev_state):
     if prev_state is None or prev_state.h_t is None:
       h_tm1 = dy.zeroes(dim=(self.hidden_dim,), batch_size=x_t.dim()[1])
@@ -74,7 +91,11 @@ class LowMemLSTMBuilder(object):
       c_tm1 = dy.zeroes(dim=(self.hidden_dim,), batch_size=x_t.dim()[1])
     else:
       c_tm1 = prev_state.c_t
-    gates_t = dy.vanilla_lstm_gates(x_t, h_tm1, self.Wx, self.Wh, self.b)
+    if self.dropout_rate > 0.0:
+      # apply dropout according to https://arxiv.org/abs/1512.05287 (tied weights)
+      gates_t = dy.vanilla_lstm_gates_dropout(x_t, h_tm1, self.Wx, self.Wh, self.b, self.dropout_mask_x, self.dropout_mask_h, self.weightnoise_std)
+    else:
+      gates_t = dy.vanilla_lstm_gates(x_t, h_tm1, self.Wx, self.Wh, self.b, self.weightnoise_std)
     try:
       c_t = dy.vanilla_lstm_c(c_tm1, gates_t)
     except ValueError:
@@ -84,17 +105,19 @@ class LowMemLSTMBuilder(object):
     
   def transduce(self, xs):
     xs = list(xs)
-    Wx = dy.parameter(self.p_Wx)
-    Wh = dy.parameter(self.p_Wh)
-    b = dy.parameter(self.p_b)
     h = [dy.zeroes(dim=(self.hidden_dim,), batch_size=xs[0].dim()[1])]
     c = [dy.zeroes(dim=(self.hidden_dim,), batch_size=xs[0].dim()[1])]
-    for i, x_t in enumerate(xs):
-      gates_t = dy.vanilla_lstm_gates(x_t, h[-1], Wx, Wh, b)
+    for x_t in xs:
+      if self.dropout_rate > 0.0:
+        # apply dropout according to https://arxiv.org/abs/1512.05287 (tied weights)
+        gates_t = dy.vanilla_lstm_gates_dropout([x_t], h[-1], self.Wx, self.Wh, self.b, self.dropout_mask_x, self.dropout_mask_h, self.weightnoise_std)
+      else:
+        gates_t = dy.vanilla_lstm_gates([x_t], h[-1], self.Wx, self.Wh, self.b, self.weightnoise_std)
       c_t = dy.vanilla_lstm_c(c[-1], gates_t)
       c.append(c_t)
       h.append(dy.vanilla_lstm_h(c_t, gates_t))
     return h
+  
 
 
 class CustomLSTMBuilder(object):
