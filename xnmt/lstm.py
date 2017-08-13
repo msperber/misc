@@ -197,49 +197,30 @@ class ConvLSTMBuilder:
     h_out = {}
     for direction in ["fwd", "bwd"]:
       # input convolutions
-      x_filtered_all = dy.conv2d_bias(es_chn, dy.parameter(self.params["x2all_" + direction]), dy.parameter(self.params["b_" + direction]), stride=(1,1), is_valid=False)
-      x_filtered_i = dy.pick_range(x_filtered_all, 0, self.num_filters, 2)
-      x_filtered_f = dy.pick_range(x_filtered_all, self.num_filters, self.num_filters*2, 2)
-      x_filtered_o = dy.pick_range(x_filtered_all, self.num_filters*2, self.num_filters*3, 2)
-      x_filtered_g = dy.pick_range(x_filtered_all, self.num_filters*3, self.num_filters*4, 2)
-
-      # convert tensor into list
-      xs_i = [dy.pick_range(x_filtered_i, i, i+1) for i in range(x_filtered_i.dim()[0][0])]
-      xs_f = [dy.pick_range(x_filtered_f, i, i+1) for i in range(x_filtered_f.dim()[0][0])]
-      xs_o = [dy.pick_range(x_filtered_o, i, i+1) for i in range(x_filtered_o.dim()[0][0])]
-      xs_g = [dy.pick_range(x_filtered_g, i, i+1) for i in range(x_filtered_g.dim()[0][0])]
+      gates_xt_bias = dy.conv2d_bias(es_chn, dy.parameter(self.params["x2all_" + direction]), dy.parameter(self.params["b_" + direction]), stride=(1,1), is_valid=False)
+      gates_xt_bias_list = [dy.pick_range(gates_xt_bias, i, i+1) for i in range(gates_xt_bias.dim()[0][0])]
 
       h = []
       c = []
-      for input_pos in range(len(xs_i)):
-        directional_pos = input_pos if direction=="fwd" else len(xs_i)-input_pos-1
-        i_ait = xs_i[directional_pos]
-        i_aft = xs_f[directional_pos]
-        i_aot = xs_o[directional_pos]
-        i_agt = xs_g[directional_pos]
+      for input_pos in range(len(gates_xt_bias_list)):
+        directional_pos = input_pos if direction=="fwd" else len(gates_xt_bias_list)-input_pos-1
+        gates_t = gates_xt_bias_list[directional_pos]
         if input_pos>0:
           # recurrent convolutions
-          wh_all = dy.conv2d(h[-1], dy.parameter(self.params["h2all_" + direction]), stride=(1,1), is_valid=False)
-          wh_i = dy.pick_range(wh_all, 0, self.num_filters, 2)
-          wh_f = dy.pick_range(wh_all, self.num_filters, self.num_filters*2, 2)
-          wh_o = dy.pick_range(wh_all, self.num_filters*2, self.num_filters*3, 2)
-          wh_g = dy.pick_range(wh_all, self.num_filters*3, self.num_filters*4, 2)
-          i_ait += wh_i
-          i_aft += wh_f
-          i_aot += wh_o
-          i_agt += wh_g
+          gates_h_t = dy.conv2d(h[-1], dy.parameter(self.params["h2all_" + direction]), stride=(1,1), is_valid=False)
+          gates_t += gates_h_t
         
         # standard LSTM logic
-        i_it = dy.logistic(i_ait)
-        i_ft = dy.logistic(i_aft + 1.0)
-        i_ot = dy.logistic(i_aot)
-        i_gt = dy.tanh(i_agt)
-        if input_pos==0:
-          c.append(dy.cmult(i_it, i_gt))
+        if len(c)==0:
+          c_tm1 = dy.zeros((self.freq_dim * self.num_filters,), batch_size=batch_size)
         else:
-          c.append(dy.cmult(i_ft, c[-1]) + dy.cmult(i_it, i_gt))
-        h_t = dy.cmult(i_ot, dy.tanh(c[-1]))
-        h.append(h_t)
+          c_tm1 = c[-1]
+        # TODO: to save memory, could extend vanilla_lstm_c, vanilla_lstm_h to allow arbitrary tensors instead of just vectors; then we can avoid the reshapes below
+        gates_t_reshaped = dy.reshape(gates_t, (4 * self.freq_dim * self.num_filters,), batch_size=batch_size)
+        c_t = dy.reshape(dy.vanilla_lstm_c(c_tm1, gates_t_reshaped), (self.freq_dim * self.num_filters,), batch_size=batch_size) 
+        c.append(c_t)
+        h_t = dy.vanilla_lstm_h(c_t, gates_t_reshaped)
+        h.append(dy.reshape(h_t, (1, self.freq_dim, self.num_filters, ), batch_size=batch_size))
       h_out[direction] = h
     ret_expr = []
     for state_i in range(len(h_out["fwd"])):
