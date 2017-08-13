@@ -34,8 +34,7 @@ class BatchNorm(object):
       bn_mean = dy.moment_dim(input_expr, self.get_stat_dimensions(), 1, True)
       neg_bn_mean_reshaped = -dy.reshape(-bn_mean, self.get_normalizer_dimensionality())
       self.bn_population_running_mean += -BatchNorm.bn_momentum*self.bn_population_running_mean + BatchNorm.bn_momentum * bn_mean.npvalue()
-#          bn_std = dy.std_dim(cnn_layer, self.get_stat_dimensions(), True) # currently unusably slow, but would be less wasteful memory-wise
-      bn_std = dy.sqrt(dy.moment_dim(dy.cadd(input_expr, neg_bn_mean_reshaped), self.get_stat_dimensions(), 2, True))
+      bn_std = dy.std_dim(input_expr, self.get_stat_dimensions(), True)
       self.bn_population_running_std += -BatchNorm.bn_momentum*self.bn_population_running_std + BatchNorm.bn_momentum * bn_std.npvalue()
     else:
       neg_bn_mean_reshaped = -dy.reshape(dy.inputVector(self.bn_population_running_mean), self.get_normalizer_dimensionality())
