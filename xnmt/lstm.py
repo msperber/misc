@@ -117,9 +117,9 @@ class CustomCompactLSTMBuilder(object):
         x_t = [xs[pos_i], xs2[pos_i]]
       if self.dropout_rate > 0.0:
         # apply dropout according to https://arxiv.org/abs/1512.05287 (tied weights)
-        gates_t = dy.vanilla_lstm_gates_dropout(x_t, h[-1], self.Wx, self.Wh, self.b, self.dropout_mask_x, self.dropout_mask_h, self.weightnoise_std)
+        gates_t = dy.vanilla_lstm_gates_dropout_concat(x_t, h[-1], self.Wx, self.Wh, self.b, self.dropout_mask_x, self.dropout_mask_h, self.weightnoise_std)
       else:
-        gates_t = dy.vanilla_lstm_gates(x_t, h[-1], self.Wx, self.Wh, self.b, self.weightnoise_std)
+        gates_t = dy.vanilla_lstm_gates_concat(x_t, h[-1], self.Wx, self.Wh, self.b, self.weightnoise_std)
       c_t = dy.vanilla_lstm_c(c[-1], gates_t)
       c.append(c_t)
       h.append(dy.vanilla_lstm_h(c_t, gates_t))
