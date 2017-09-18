@@ -207,9 +207,6 @@ class PerturbedPlainTextReader(BaseTextReader, Serializable):
                                                                vocab=vocab,
                                                                vocabWeights=self.vocab_weights,
                                                                op_weights=self.op_weights)
-      print("line:", line)
-      print("pert_words:", pert_words)
-      print("----")
       total_sub += num_sub
       total_ins += num_ins
       total_del += num_del
