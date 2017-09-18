@@ -18,13 +18,13 @@ defaults:
       dev_src: examples/data/head.ja
       dev_trg: examples/data/head.en
     corpus_parser: !BilingualCorpusParser
-      trg_reader: !PerturbedPlainTextReader
+      src_reader: !PerturbedPlainTextReader
         vocab: !Vocab
           vocab_file: examples/data/mini-vocab.en
         tau: 0.1
         op_weights: !!python/tuple [2,1,1]
         weighted_vocab_file: examples/data/mini-vocab-weighted.en
-      src_reader: !PlainTextReader {}
+      trg_reader: !PlainTextReader {}
       max_src_len: 15
       max_trg_len: 15
     model: !DefaultTranslator

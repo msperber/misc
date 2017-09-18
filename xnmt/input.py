@@ -80,7 +80,7 @@ class ArrayInput(Input):
 ###### Classes that will read in a file and turn it into an input
 
 class InputReader(object):
-  def read_sents(self, filename, filter_ids=None):
+  def read_sents(self, filename, filter_ids=None, is_dev=False):
     """
     :param filename: data file
     :param filter_ids: only read sentences with these ids (0-indexed)
@@ -137,7 +137,7 @@ class PlainTextReader(BaseTextReader, Serializable):
       self.vocab.freeze()
       self.vocab.set_unk(Vocab.UNK_STR)
 
-  def read_sents(self, filename, filter_ids=None):
+  def read_sents(self, filename, filter_ids=None, is_dev=False):
     if self.vocab is None:
       self.vocab = Vocab()
     return map(lambda l: SimpleSentenceInput([self.vocab.convert(word) for word in l.strip().split()] + \
@@ -191,7 +191,7 @@ class PerturbedPlainTextReader(BaseTextReader, Serializable):
       self.ordered_vocab = None
       
 
-  def read_sents(self, filename, filter_ids=None):
+  def read_sents(self, filename, filter_ids=None, is_dev=False):
     ret = []
     total_sub, total_ins, total_del, total_ref_len = 0, 0, 0, 0
     if self.ordered_vocab:
@@ -202,19 +202,24 @@ class PerturbedPlainTextReader(BaseTextReader, Serializable):
       del vocab[vocab.index(Vocab.SS_STR)]
       del vocab[vocab.index(Vocab.UNK_STR)]
     for line in self.iterate_filtered(filename, filter_ids):
-      pert_words, num_sub, num_ins, num_del = sample_corrupted(words=line.strip().split(), 
-                                                               tau=self.tau, 
-                                                               vocab=vocab,
-                                                               vocabWeights=self.vocab_weights,
-                                                               op_weights=self.op_weights)
-      total_sub += num_sub
-      total_ins += num_ins
-      total_del += num_del
-      total_ref_len += len(line.strip().split())
+      if is_dev:
+        pert_words = line.strip().split()
+        num_sub, num_ins, num_del = 0,0,0
+      else:
+        pert_words, num_sub, num_ins, num_del = sample_corrupted(words=line.strip().split(), 
+                                                                 tau=self.tau, 
+                                                                 vocab=vocab,
+                                                                 vocabWeights=self.vocab_weights,
+                                                                 op_weights=self.op_weights)
+        total_sub += num_sub
+        total_ins += num_ins
+        total_del += num_del
+        total_ref_len += len(line.strip().split())
       ret.append(SimpleSentenceInput([self.vocab.convert(word) for word in pert_words] + \
                                                       [self.vocab.convert(Vocab.ES_STR)]))
-    print("perturbed sequence for tau={}, average edit rate: {:.2f} % (S: {}, I: {}, D: {})".format(self.tau,
-          float(total_sub+total_ins+total_del)/float(total_ref_len)*100.0, total_sub, total_ins, total_del))
+    if not is_dev:
+      print("perturbed sequence for tau={}, average edit rate: {:.2f} % (S: {}, I: {}, D: {})".format(self.tau,
+            float(total_sub+total_ins+total_del)/float(total_ref_len)*100.0, total_sub, total_ins, total_del))
     return ret
 
   def freeze(self):
@@ -250,7 +255,7 @@ class ContVecReader(InputReader, Serializable):
   def __init__(self, transpose=False):
     self.transpose = transpose
 
-  def read_sents(self, filename, filter_ids=None):
+  def read_sents(self, filename, filter_ids=None, is_dev=False):
     npzFile = np.load(filename, mmap_mode=None if filter_ids is None else "r")
     npzKeys = sorted(npzFile.files, key=lambda x: int(x.split('_')[-1]))
     if filter_ids is not None:
@@ -276,7 +281,7 @@ class IDReader(BaseTextReader, Serializable):
   """
   yaml_tag = u"!IDReader"
 
-  def read_sents(self, filename, filter_ids=None):
+  def read_sents(self, filename, filter_ids=None, is_dev=False):
     return map(lambda l: int(l.strip()), self.iterate_filtered(filename, filter_ids))
 
 ###### CorpusParser
@@ -355,8 +360,8 @@ class BilingualCorpusParser(CorpusParser, Serializable):
     else:
       filter_ids = None
 
-    src_dev_iterator = self.src_reader.read_sents(training_corpus.dev_src, filter_ids)
-    trg_dev_iterator = self.trg_reader.read_sents(training_corpus.dev_trg, filter_ids)
+    src_dev_iterator = self.src_reader.read_sents(training_corpus.dev_src, filter_ids, is_dev=True)
+    trg_dev_iterator = self.trg_reader.read_sents(training_corpus.dev_trg, filter_ids, is_dev=True)
     for src_sent, trg_sent in six.moves.zip_longest(src_dev_iterator, trg_dev_iterator):
       if src_sent is None or trg_sent is None:
         raise RuntimeError("dev src sentences don't match target trg: %s != %s!" % (self.src_reader.count_sents(training_corpus.dev_src), self.dev_trg_len), self.trg_reader.count_sents(training_corpus.dev_trg))

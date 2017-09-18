@@ -60,7 +60,7 @@ def xnmt_decode(args, model_elements=None):
 
   is_reporting = issubclass(generator.__class__, Reportable) and args.report_path is not None
   # Corpus
-  src_corpus = corpus_parser.src_reader.read_sents(args.src_file)
+  src_corpus = corpus_parser.src_reader.read_sents(args.src_file, is_dev=True)
   # Vocab
   src_vocab = corpus_parser.src_reader.vocab if hasattr(corpus_parser.src_reader, "vocab") else None
   trg_vocab = corpus_parser.trg_reader.vocab if hasattr(corpus_parser.trg_reader, "vocab") else None
