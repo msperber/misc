@@ -58,7 +58,11 @@ def sample_corrupted(words, tau, vocab, vocabWeights=None, op_weights=(1,1,1)):
 
 def sample_edit_distance(tau, sent_len):
     lam = tau * sent_len
-    return min(np.random.poisson(lam=lam), sent_len) # TODO: this should be replaced by a true truncated Poisson distr
+    sampled = None
+    #return min(np.random.poisson(lam=lam), sent_len)
+    while sampled is None or sampled > sent_len:
+      sampled = np.random.poisson(lam=lam)
+    return sampled
 
 def sample_num_operations(distance, op_weights):
     num_buckets = sum(op_weights)
