@@ -17,16 +17,6 @@ defaults:
       train_trg: examples/data/head.en
       dev_src: examples/data/head.ja
       dev_trg: examples/data/head.en
-    corpus_parser: !BilingualCorpusParser
-      src_reader: !PerturbedPlainTextReader
-        vocab: !Vocab
-          vocab_file: examples/data/mini-vocab.en
-        tau: 0.1
-        op_weights: !!python/tuple [2,1,1]
-        weighted_vocab_file: examples/data/mini-vocab-weighted.en
-      trg_reader: !PlainTextReader {}
-      max_src_len: 15
-      max_trg_len: 15
     model: !DefaultTranslator
       src_embedder: !SimpleWordEmbedder
         emb_dim: 64
@@ -52,4 +42,27 @@ defaults:
   evaluate:
     ref_file: examples/data/head.en
 
-exp1:
+
+debug-config-2layers:
+  train:
+    dropout: 0.2
+    corpus_parser: !BilingualCorpusParser
+      src_reader: !PlainTextReader {}
+      trg_reader: !PlainTextReader {}
+      max_src_len: 15
+      max_trg_len: 15
+
+debug-config-2layers-finetune:
+  train:
+    dropout: 0.2
+    pretrained_model_file: examples/output/debug-config-2layers.mod
+    corpus_parser: !BilingualCorpusParser
+      src_reader: !PerturbedPlainTextReader
+        vocab: !Vocab
+          vocab_file: examples/data/mini-vocab.en
+        tau: 0.1
+        op_weights: !!python/tuple [2,1,1]
+        weighted_vocab_file: examples/data/mini-vocab-weighted.en
+      trg_reader: !PlainTextReader {}
+      max_src_len: 15
+      max_trg_len: 15
