@@ -156,8 +156,8 @@ class XnmtTrainer(object):
 
   def load_corpus_and_model(self):
     self.training_corpus = self.model_serializer.initialize_object(self.args.training_corpus) if self.need_deserialization else self.args.training_corpus
-    corpus_parser, model, my_model_context = self.model_serializer.load_from_file(self.args.pretrained_model_file, self.model_context.dynet_param_collection)
-    self.corpus_parser = self.model_serializer.initialize_object(corpus_parser) if self.need_deserialization else self.args.corpus_parser
+    _, model, my_model_context = self.model_serializer.load_from_file(self.args.pretrained_model_file, self.model_context.dynet_param_collection)
+    self.corpus_parser = self.model_serializer.initialize_object(self.args.corpus_parser) if self.need_deserialization else self.args.corpus_parser
     self.corpus_parser.read_training_corpus(self.training_corpus)
     self.model_context.update(my_model_context)
     self.total_train_sent = len(self.training_corpus.train_src_data)
