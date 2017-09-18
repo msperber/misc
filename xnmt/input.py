@@ -4,8 +4,10 @@ import io
 import six
 from collections import defaultdict
 from six.moves import zip_longest, map
+
 from xnmt.serializer import Serializable
 from xnmt.vocab import *
+from script.code.perturb_seq import sample_corrupted
 ###### Classes representing single inputs
 
 class Input(object):
@@ -149,6 +151,83 @@ class PlainTextReader(BaseTextReader, Serializable):
 
   def vocab_size(self):
     return len(self.vocab)
+
+class PerturbedPlainTextReader(BaseTextReader, Serializable):
+  """
+  Reads plain text but perturbs sequences with random substitutions, insertions, and deletions 
+  """
+  yaml_tag = u'!PerturbedPlainTextReader'
+  def __init__(self, vocab, tau, op_weights = (1,1,1), weighted_vocab_file=None):
+    """
+    :param vocab: Vocab to be used (words not in vocab are mapped to unk)
+    :param tau: magnitude of noise (0.0 <= tau <= 1.0)
+    :param weighted_vocab_file: specify unigram probs (if not given, sample uniformly from vocab)
+    """
+    assert vocab is not None
+    self.vocab = vocab
+    self.vocab.freeze()
+    self.vocab.set_unk(Vocab.UNK_STR)
+
+    assert 0.0 <= tau <= 1.0
+    self.tau = tau
+    
+    assert len(op_weights)==3
+    self.op_weights = op_weights
+
+    if weighted_vocab_file:
+      self.vocab_weights = []
+      self.ordered_vocab = []
+      for line in io.open(weighted_vocab_file).readlines():
+        cur_word = line.split()[1]
+        self.ordered_vocab.append(cur_word)
+        cur_weight = float(line.split()[0])
+        assert cur_weight >= 0.0
+        self.vocab_weights.append(cur_weight)
+      weight_sum = sum(self.vocab_weights)
+      for i in range(len(self.vocab_weights)):
+        self.vocab_weights[i] /= weight_sum
+    else:
+      self.vocab_weights = None
+      self.ordered_vocab = None
+      
+
+  def read_sents(self, filename, filter_ids=None):
+    ret = []
+    total_sub, total_ins, total_del, total_ref_len = 0, 0, 0, 0
+    if self.ordered_vocab:
+      vocab = self.ordered_vocab
+    else:
+      vocab = list(self.vocab.w2i.keys())
+      del vocab[vocab.index(Vocab.ES_STR)]
+      del vocab[vocab.index(Vocab.SS_STR)]
+      del vocab[vocab.index(Vocab.UNK_STR)]
+    for line in self.iterate_filtered(filename, filter_ids):
+      pert_words, num_sub, num_ins, num_del = sample_corrupted(words=line.strip().split(), 
+                                                               tau=self.tau, 
+                                                               vocab=vocab,
+                                                               vocabWeights=self.vocab_weights,
+                                                               op_weights=self.op_weights)
+      print("line:", line)
+      print("pert_words:", pert_words)
+      print("----")
+      total_sub += num_sub
+      total_ins += num_ins
+      total_del += num_del
+      total_ref_len += len(line.strip().split())
+      ret.append(SimpleSentenceInput([self.vocab.convert(word) for word in pert_words] + \
+                                                      [self.vocab.convert(Vocab.ES_STR)]))
+    print("perturbed sequence for tau={}, average edit rate: {:.2f} % (S: {}, I: {}, D: {})".format(self.tau,
+          float(total_sub+total_ins+total_del)/float(total_ref_len)*100.0, total_sub, total_ins, total_del))
+    return ret
+
+  def freeze(self):
+    self.vocab.freeze()
+    self.vocab.set_unk(Vocab.UNK_STR)
+    self.overwrite_serialize_param("vocab", self.vocab)
+
+  def vocab_size(self):
+    return len(self.vocab)
+
 
 class ContVecReader(InputReader, Serializable):
   """
