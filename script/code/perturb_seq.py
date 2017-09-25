@@ -22,7 +22,8 @@ Options:
     -e --empty-line-repl s     replace empty lines by string s
     -o --op-weights s          integer-valued weights (>=0) for sub, ins, del operations (defaults to "1 1 1")
     -v --vocab f               set vocab (otherwise, inferred from in.txt)
-    -w --weighted-vocab f      weighted vocab for unigram sampling (expects text lines: "<weight> <word>") 
+    -w --weighted-vocab f      weighted vocab for unigram sampling (expects text lines: "<weight> <word>")
+    -i --ignore-vocab f        ignore (don't delete or subsitute for) tokens specified in this vocab file
     (as always: -h for help)
 """
 
@@ -31,6 +32,7 @@ __author__      = "Matthias Sperber"
 __date__        = "March 10, 2017"
 
 import sys, os
+import io
 import docopt
 import math
 import numpy as np
@@ -44,12 +46,13 @@ class ModuleTest(Exception):
     def __init__(self, msg):
         self.msg = msg
 
-def sample_corrupted(words, tau, vocab, vocabWeights=None, op_weights=(1,1,1)):
-    sent_len = len(words)
+def sample_corrupted(words, tau, vocab, vocabWeights=None, op_weights=(1,1,1), ignoreVocab=[]):
+    sent_len = len([w for w in words if not w in ignoreVocab])
     distance = sample_edit_distance(tau, sent_len)
+    sub_del_candidate_positions = [i for i in range(sent_len) if not words[i] in ignoreVocab]
     num_sub, num_ins, num_del = sample_num_operations(distance, op_weights)
-    sub_positions = sample_sub_positions(range(sent_len), num_sub)
-    del_positions = sample_sub_positions([p for p in range(sent_len) if not p in sub_positions], num_del)
+    sub_positions = sample_sub_positions(sub_del_candidate_positions, num_sub)
+    del_positions = sample_sub_positions([p for p in sub_del_candidate_positions if not p in sub_positions], num_del)
     ins_positions = sample_ins_positions(range(sent_len+1), num_ins)
     ret_words = \
         corrupt_positions(words, vocab, sub_positions, ins_positions, del_positions, 
@@ -116,7 +119,7 @@ def main(argv=None):
     inputFileName = arguments["<in.txt>"]
     outputFileName = arguments["<out.txt>"]
     if outputFileName:
-        outF = open(outputFileName + ".tmp", "w")
+        outF = io.open(outputFileName + ".tmp", "w")
     
     emptyLineRepl = arguments["--empty-line-repl"]
     if emptyLineRepl is None: emptyLineRepl = ""
@@ -127,34 +130,36 @@ def main(argv=None):
     
     vocabFileName = arguments["--vocab"]
     weightedVocabFileName = arguments["--weighted-vocab"]
-#    delRate = arguments['--del-rate']
-#    if delRate is not None: delRate = float(delRate)
-#    insBoost = arguments["--ins-boost"]
-#    if insBoost is not None: insBoost = float(insBoost)
+
+    ignoreVocabFileName = arguments["--ignore-vocab"]
     
     assumeCharTokens = arguments["--char-tokens"]
     
     vocab = []
     vocabWeights = None
     if vocabFileName:
-        for v in open(vocabFileName).readlines():
-            vocab.append(v.decode("utf-8").strip())
+        for v in io.open(vocabFileName).readlines():
+            vocab.append(v.strip())
     elif weightedVocabFileName:
         vocabWeights = []
-        for line in open(weightedVocabFileName).readlines():
-            vocab.append(line.decode("utf-8").split()[1])
-            vocabWeights.append(float(line.decode("utf-8").split()[0]))
+        for line in io.open(weightedVocabFileName).readlines():
+            vocab.append(line.split()[1])
+            vocabWeights.append(float(line.split()[0]))
         weightSum = sum(vocabWeights)
         for i in range(len(vocabWeights)):
             vocabWeights[i] /= weightSum
     else:
         vocabSet = set()
-        for line in open(inputFileName):
+        for line in io.open(inputFileName):
             if assumeCharTokens:
                 line = "".join([c if c!="__" else " " for c in line.split()])
-            for v in line.decode("utf-8").strip().split():
+            for v in line.strip().split():
                 vocabSet.add(v)
         vocab = list(vocabSet)
+    ignoreVocab = []
+    if ignoreVocabFileName:
+        for v in io.open(ignoreVocabFileName).readlines():
+            ignoreVocab.append(v.strip())
 
 
     ###########################
@@ -162,8 +167,7 @@ def main(argv=None):
     ###########################
 
     total_sub, total_ins, total_del, total_ref_len = 0, 0, 0, 0
-    for line in open(inputFileName):
-        line = line.decode("utf-8")
+    for line in io.open(inputFileName):
         if assumeCharTokens:
             line = "".join([c if c!="__" else " " for c in line.split()])
         words = line.strip().split()
@@ -172,7 +176,8 @@ def main(argv=None):
                                         words=words, 
                                         tau=tau, vocab=vocab,
                                         vocabWeights=vocabWeights,
-                                        op_weights=op_weights)
+                                        op_weights=op_weights,
+                                        ignoreVocab=ignoreVocab)
         total_sub += num_sub
         total_ins += num_ins
         total_del += num_del
@@ -186,7 +191,7 @@ def main(argv=None):
             outLine = emptyLineRepl
 
         if outputFileName is not None:
-            outF.write((outLine + "\n").encode("utf-8"))
+            outF.write((outLine + "\n"))
         else:
             print outLine
     
