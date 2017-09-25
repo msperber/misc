@@ -148,6 +148,8 @@ class YamlSerializer(object):
             else:
               new_init_params.append(item)
           init_params[init_arg] = new_init_params
+        else: # TODO: experimental; seems to be necessary but why wasn't it before?
+          init_params[init_arg] = val
     for p in dependent_init_params:
       if p.matches_component("") and p.param_name() not in init_params:
         if p.param_name() in init_args:
