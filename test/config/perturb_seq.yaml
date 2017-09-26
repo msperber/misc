@@ -12,7 +12,6 @@ defaults:
     weight_noise: 0.1
     dev_metrics: bleu
     reload_between_epochs: True
-    fix_src_emb: True
     training_corpus: !BilingualTrainingCorpus
       train_src: examples/data/head.ja
       train_trg: examples/data/head.en
@@ -55,6 +54,7 @@ debug-config-2layers:
 
 debug-config-2layers-finetune:
   train:
+    fix_src_emb: True
     dropout: 0.2
     pretrained_model_file: examples/output/debug-config-2layers.mod
     corpus_parser: !BilingualCorpusParser
