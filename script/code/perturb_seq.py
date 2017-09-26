@@ -69,18 +69,11 @@ def sample_edit_distance(tau, sent_len):
 
 def sample_num_operations(distance, op_weights):
     num_buckets = sum(op_weights)
-    num_sub, num_ins, num_del = 0,0,0
-    # due to rounding issues, we might need several attempts:
-    while distance != num_sub + num_ins + num_del:
-        # we do the *multiplicator thing to handle cases where distance < sum(op_weights)
-        sorted_samples = sorted(np.random.choice(range(distance*num_buckets), size=num_buckets-1, replace=False))
-        sorted_samples = [0] + sorted_samples + [distance*num_buckets]
-        num_sub = sum([sorted_samples[i+1] - sorted_samples[i] for i in range(0,op_weights[0])])
-        num_ins = sum([sorted_samples[i+1] - sorted_samples[i] for i in range(op_weights[0],op_weights[0]+op_weights[1])])
-        num_del = sum([sorted_samples[i+1] - sorted_samples[i] for i in range(op_weights[0]+op_weights[1],op_weights[0]+op_weights[1]+op_weights[2])])
-        num_sub = int(round(num_sub/float(num_buckets)))
-        num_ins = int(round(num_ins/float(num_buckets)))
-        num_del = int(round(num_del/float(num_buckets)))
+    sorted_samples = sorted(np.random.choice(range(1,distance+num_buckets), size=num_buckets-1, replace=False))
+    sorted_samples = [0] + sorted_samples + [distance+num_buckets]
+    num_sub = sum([sorted_samples[i+1] - sorted_samples[i] - 1 for i in range(0,op_weights[0])])
+    num_ins = sum([sorted_samples[i+1] - sorted_samples[i] - 1 for i in range(op_weights[0],op_weights[0]+op_weights[1])])
+    num_del = sum([sorted_samples[i+1] - sorted_samples[i] - 1 for i in range(op_weights[0]+op_weights[1],op_weights[0]+op_weights[1]+op_weights[2])])
     assert distance == num_sub + num_ins + num_del
     assert min(num_sub, num_ins, num_del) >= 0
     return num_sub, num_ins, num_del
