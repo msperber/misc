@@ -49,7 +49,7 @@ class ModuleTest(Exception):
 def sample_corrupted(words, tau, vocab, vocabWeights=None, op_weights=(1,1,1), ignoreVocab=[]):
     sent_len = len([w for w in words if not w in ignoreVocab])
     distance = sample_edit_distance(tau, sent_len)
-    sub_del_candidate_positions = [i for i in range(sent_len) if not words[i] in ignoreVocab]
+    sub_del_candidate_positions = [i for i in range(len(words)) if not words[i] in ignoreVocab]
     num_sub, num_ins, num_del = sample_num_operations(distance, op_weights)
     sub_positions = sample_sub_positions(sub_del_candidate_positions, num_sub)
     del_positions = sample_sub_positions([p for p in sub_del_candidate_positions if not p in sub_positions], num_del)
