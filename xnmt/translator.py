@@ -19,6 +19,7 @@ from xnmt.decorators import recursive_assign, recursive
 import xnmt.serializer
 from xnmt.batcher import mark_as_batch, is_batched
 from xnmt.vocab import Vocab
+from xnmt.expression_sequence import ExpressionSequence
 
 # Reporting purposes
 from lxml import etree
@@ -105,6 +106,9 @@ class DefaultTranslator(Translator, Serializable, Reportable):
     self.report_path = kwargs.get("report_path", None)
     self.report_type = kwargs.get("report_type", None)
 
+  def set_fix_src_emb(self, val):
+    self.fix_src_emb = val
+    
   def calc_loss(self, src, trg, src_mask=None, trg_mask=None, info=None):
     """
     :param src: source sequence (unbatched, or batched + padded)
@@ -115,6 +119,8 @@ class DefaultTranslator(Translator, Serializable, Reportable):
     """
     self.start_sent()
     embeddings = self.src_embedder.embed_sent(src, mask=src_mask)
+    if self.fix_src_emb:
+      embeddings = ExpressionSequence(expr_list=[dy.nobackprop(xi) for xi in embeddings.as_list()])
     encodings = self.encoder.transduce(embeddings)
     self.attender.init_sent(encodings)
     # Initialize the hidden state from the encoder

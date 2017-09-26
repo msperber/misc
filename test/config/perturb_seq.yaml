@@ -12,6 +12,7 @@ defaults:
     weight_noise: 0.1
     dev_metrics: bleu
     reload_between_epochs: True
+    fix_src_emb: True
     training_corpus: !BilingualTrainingCorpus
       train_src: examples/data/head.ja
       train_trg: examples/data/head.en
