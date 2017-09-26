@@ -60,6 +60,7 @@ options = [
   Option("dropout", float, default_value=0.0),
   Option("weight_noise", float, default_value=0.0),
   Option("model", dict, default_value={}),
+  Option("fix_src_emb", bool, default_value=False),
 ]
 
 class XnmtTrainer(object):
@@ -216,6 +217,7 @@ class XnmtTrainer(object):
         self.pack_batches()
 
     self.model.set_train(update_weights)
+    self.model.set_fix_src_emb(self.args.fix_src_emb)
     order = list(range(0, len(self.train_src)))
     np.random.shuffle(order)
     for batch_num in order:
