@@ -145,7 +145,7 @@ def main(argv=None):
         vocabSet = set()
         for line in io.open(inputFileName):
             if assumeCharTokens:
-                line = "".join([c if c!="__" else " " for c in line.split()])
+                line = "".join([c if c!=u"__" else u" " for c in line.split()])
             for v in line.strip().split():
                 vocabSet.add(v)
         vocab = list(vocabSet)
@@ -162,7 +162,7 @@ def main(argv=None):
     total_sub, total_ins, total_del, total_ref_len = 0, 0, 0, 0
     for line in io.open(inputFileName):
         if assumeCharTokens:
-            line = "".join([c if c!="__" else " " for c in line.split()])
+            line = u"".join([c if c!=u"__" else u" " for c in line.split()])
         words = line.strip().split()
         ret_words, num_sub, num_ins, num_del = \
                         sample_corrupted(
@@ -178,13 +178,13 @@ def main(argv=None):
         outLine = u" ".join(ret_words)
         
         if assumeCharTokens:
-            outLine = " ".join([s if s!=" " else "__" for s in list(outLine)])
+            outLine = u" ".join([s if s!=u" " else u"__" for s in list(outLine)])
         
         if len(ret_words)==0:
             outLine = emptyLineRepl
 
         if outputFileName is not None:
-            outF.write((outLine + "\n"))
+            outF.write((outLine + u"\n"))
         else:
             print outLine
     
