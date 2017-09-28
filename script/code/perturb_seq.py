@@ -123,13 +123,13 @@ class Aligner:
     return c, x, y, s
 
 
-def sample_corrupted(words, tau, vocab, vocab_weights=None, op_weights=(1,1,1), ignoreVocab=[], use_word_sim=False):
+def sample_corrupted(words, tau, vocab, vocab_weights=None, op_weights=(1,1,1), ignoreVocab=[], use_word_sim=False, prefer_shorter=False):
   sent_len = len([w for w in words if not w in ignoreVocab])
   distance = sample_edit_distance(tau, sent_len)
   sub_del_candidate_positions = [i for i in range(len(words)) if not words[i] in ignoreVocab]
   num_sub, num_ins, num_del = sample_num_operations(distance, op_weights)
-  sub_positions = sample_sub_positions(sub_del_candidate_positions, num_sub)
-  del_positions = sample_sub_positions([p for p in sub_del_candidate_positions if not p in sub_positions], num_del)
+  sub_positions = sample_sub_positions(words, sub_del_candidate_positions, num_sub, prefer_shorter)
+  del_positions = sample_sub_positions(words, [p for p in sub_del_candidate_positions if not p in sub_positions], num_del, prefer_shorter)
   ins_positions = sample_ins_positions(range(sent_len+1), num_ins)
   ret_words = \
       corrupt_positions(words, vocab, sub_positions, ins_positions, del_positions, 
@@ -154,9 +154,12 @@ def sample_num_operations(distance, op_weights):
   assert min(num_sub, num_ins, num_del) >= 0
   return num_sub, num_ins, num_del
 
-def sample_sub_positions(pos_choices, num_sub):
+def sample_sub_positions(words, pos_choices, num_sub, prefer_shorter=False):
   if num_sub==0: return []
-  sub_positions = np.random.choice(pos_choices, size=num_sub, replace=False)
+  p = None
+  if prefer_shorter:
+    p = np.exp(-1.0 * np.asarray([len(words[pos]) for pos in pos_choices])) / np.sum(np.exp(-1.0 * np.asarray([len(words[pos]) for pos in pos_choices])))
+  sub_positions = np.random.choice(pos_choices, size=num_sub, replace=False, p=p)
   return sub_positions
 
 def sample_ins_positions(pos_choices, num_ins):

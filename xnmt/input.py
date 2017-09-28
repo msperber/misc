@@ -156,7 +156,8 @@ class PerturbedPlainTextReader(BaseTextReader, Serializable):
   Reads plain text but perturbs sequences with random substitutions, insertions, and deletions 
   """
   yaml_tag = u'!PerturbedPlainTextReader'
-  def __init__(self, vocab, tau, op_weights = (1,1,1), weighted_vocab_file=None, use_word_sim=False):
+  def __init__(self, vocab, tau, op_weights = (1,1,1), weighted_vocab_file=None, 
+               use_word_sim=False, prefer_shorter=False):
     """
     :param vocab: Vocab to be used (words not in vocab are mapped to unk)
     :param tau: magnitude of noise (0.0 <= tau <= 1.0)
@@ -174,6 +175,7 @@ class PerturbedPlainTextReader(BaseTextReader, Serializable):
     self.op_weights = op_weights
     
     self.use_word_sim = use_word_sim
+    self.prefer_shorter = prefer_shorter
 
     if weighted_vocab_file:
       self.vocab_weights = []
@@ -212,7 +214,8 @@ class PerturbedPlainTextReader(BaseTextReader, Serializable):
                                                                  vocab=vocab,
                                                                  vocab_weights=self.vocab_weights,
                                                                  op_weights=self.op_weights,
-                                                                 use_word_sim=self.use_word_sim)
+                                                                 use_word_sim=self.use_word_sim,
+                                                                 prefer_shorter=self.prefer_shorter)
         total_sub += num_sub
         total_ins += num_ins
         total_del += num_del
