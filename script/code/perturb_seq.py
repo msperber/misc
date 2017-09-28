@@ -46,7 +46,84 @@ class ModuleTest(Exception):
     def __init__(self, msg):
         self.msg = msg
 
-def sample_corrupted(words, tau, vocab, vocabWeights=None, op_weights=(1,1,1), ignoreVocab=[]):
+
+class Aligner:
+  # gap penalty:
+  gapPenalty = -1.0
+  gapSymbol = None
+
+  # similarity function:
+  def sim(self, word1, word2):
+    if word1==word2: return 0
+    else: return -1
+
+  # performs edit distance alignment between two lists
+  # outputs c, x, y, s:
+  # c = score
+  # x = l1 with gapSymbol inserted to indicate insertions
+  # y = l2 with gapSymbol inserted to indicate deletions
+  # s = list of same length as x and y, specifying correct words, substitutions,
+  #      deletions, insertions as 'c', 's', 'd', 'i'
+  def align(self, l1, l2):
+    # compute matrix
+    F = [[0] * (len(l2)+1) for i in xrange((len(l1)+1))]
+    for i in range(len(l1)+1):
+      F[i][0] = i * self.gapPenalty
+    for j in range(len(l2)+1):
+      F[0][j] = j * self.gapPenalty
+    for i in range(0, len(l1)):
+      for j in range(0, len(l2)):
+        match = F[i][j] + self.sim(l1[i], l2[j])
+        delete = F[i][j+1] + self.gapPenalty
+        insert = F[i+1][j] + self.gapPenalty
+        F[i+1][j+1] = max(match, delete, insert)
+    c = F[len(l1)][len(l2)]
+    x = []
+    y = []
+    i = len(l1)-1
+    j = len(l2)-1
+    while i>=0 and j>=0:
+      score = F[i+1][j+1]
+      scoreDiag = F[i][j]
+      scoreUp = F[i+1][j]
+      scoreLeft = F[i][j+1]
+      if score == scoreLeft + self.gapPenalty:
+        x = [l1[i]] + x
+        y = [self.gapSymbol] + y
+        i -= 1
+      elif score == scoreUp + self.gapPenalty:
+        x = [self.gapSymbol] + x
+        y = [l2[j]] + y
+        j -= 1
+      else:
+        assert score == scoreDiag + self.sim(l1[i], l2[j])
+        x = [l1[i]] + x
+        y = [l2[j]] + y
+        i -= 1
+        j -= 1
+    while i>=0:
+      x = [l1[i]] + x
+      y = [self.gapSymbol] + y
+      i -= 1
+    while j>=0:
+      x = [self.gapSymbol] + x
+      y = [l2[j]] + y
+      j -= 1
+    s = []
+    assert len(x) == len(y)
+    for i in range(len(x)):
+      if x[i] is self.gapSymbol and y[i] is not self.gapSymbol:
+        s.append('i')
+      elif x[i] is not self.gapSymbol and y[i] is self.gapSymbol:
+        s.append('d')
+      elif self.sim(x[i], y[i]) >= 0:
+        s.append('c')
+      else:
+        s.append('s')
+    return c, x, y, s
+
+
+def sample_corrupted(words, tau, vocab, vocabWeights=None, op_weights=(1,1,1), ignoreVocab=[], use_word_sim=False):
     sent_len = len([w for w in words if not w in ignoreVocab])
     distance = sample_edit_distance(tau, sent_len)
     sub_del_candidate_positions = [i for i in range(len(words)) if not words[i] in ignoreVocab]
@@ -56,7 +133,7 @@ def sample_corrupted(words, tau, vocab, vocabWeights=None, op_weights=(1,1,1), i
     ins_positions = sample_ins_positions(range(sent_len+1), num_ins)
     ret_words = \
         corrupt_positions(words, vocab, sub_positions, ins_positions, del_positions, 
-                          vocabWeights=vocabWeights)
+                          vocabWeights=vocabWeights, use_word_sim=use_word_sim)
     return ret_words, num_sub, num_ins, num_del
 
 def sample_edit_distance(tau, sent_len):
@@ -89,10 +166,14 @@ def sample_ins_positions(pos_choices, num_ins):
     return ins_positions
 
 def corrupt_positions(words, vocab, sub_positions, ins_positions, del_positions,
-                      vocabWeights=None):
+                      vocabWeights=None, use_word_sim=False):
+    if use_word_sim: assert vocabWeights is None
+    
     ret_words = list(words)
     for pos in sub_positions:
         word = words[pos]
+        if use_word_sim:
+            vocabWeights = get_similarities(word, vocab)
         while(word==words[pos]):
             word = np.random.choice(vocab, p=vocabWeights)
         ret_words[pos] = word
@@ -103,6 +184,18 @@ def corrupt_positions(words, vocab, sub_positions, ins_positions, del_positions,
         ret_words.insert(pos, word)
     ret_words = [w for w in ret_words if w is not None]
     return ret_words
+
+aligner = Aligner()
+cache = {}
+def get_similarities(word, vocab):
+    if word in cache:
+        return cache[word]
+    else:
+        dist = [aligner.align(word, w2)[0] for w2 in vocab]
+        similarities=np.exp(dist)/sum(np.exp(dist))
+        if len(cache) < 1000:
+            cache[word] = similarities
+        return similarities
 
 def main(argv=None):
     arguments = docopt.docopt(__doc__, options_first=True, argv=argv)

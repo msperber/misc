@@ -63,7 +63,8 @@ debug-config-2layers-finetune:
           vocab_file: examples/data/mini-vocab.en
         tau: 0.1
         op_weights: !!python/tuple [2,1,1]
-        weighted_vocab_file: examples/data/mini-vocab-weighted.en
+        #weighted_vocab_file: examples/data/mini-vocab-weighted.en
+        use_word_sim: True
       trg_reader: !PlainTextReader {}
       max_src_len: 15
       max_trg_len: 15
