@@ -210,7 +210,7 @@ class PerturbedPlainTextReader(BaseTextReader, Serializable):
         pert_words, num_sub, num_ins, num_del = sample_corrupted(words=line.strip().split(), 
                                                                  tau=self.tau, 
                                                                  vocab=vocab,
-                                                                 vocabWeights=self.vocab_weights,
+                                                                 vocab_weights=self.vocab_weights,
                                                                  op_weights=self.op_weights,
                                                                  use_word_sim=self.use_word_sim)
         total_sub += num_sub

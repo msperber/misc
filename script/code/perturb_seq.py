@@ -123,7 +123,7 @@ class Aligner:
     return c, x, y, s
 
 
-def sample_corrupted(words, tau, vocab, vocabWeights=None, op_weights=(1,1,1), ignoreVocab=[], use_word_sim=False):
+def sample_corrupted(words, tau, vocab, vocab_weights=None, op_weights=(1,1,1), ignoreVocab=[], use_word_sim=False):
     sent_len = len([w for w in words if not w in ignoreVocab])
     distance = sample_edit_distance(tau, sent_len)
     sub_del_candidate_positions = [i for i in range(len(words)) if not words[i] in ignoreVocab]
@@ -133,7 +133,7 @@ def sample_corrupted(words, tau, vocab, vocabWeights=None, op_weights=(1,1,1), i
     ins_positions = sample_ins_positions(range(sent_len+1), num_ins)
     ret_words = \
         corrupt_positions(words, vocab, sub_positions, ins_positions, del_positions, 
-                          vocabWeights=vocabWeights, use_word_sim=use_word_sim)
+                          vocab_weights=vocab_weights, use_word_sim=use_word_sim)
     return ret_words, num_sub, num_ins, num_del
 
 def sample_edit_distance(tau, sent_len):
@@ -166,21 +166,23 @@ def sample_ins_positions(pos_choices, num_ins):
     return ins_positions
 
 def corrupt_positions(words, vocab, sub_positions, ins_positions, del_positions,
-                      vocabWeights=None, use_word_sim=False):
-    if use_word_sim: assert vocabWeights is None
+                      vocab_weights=None, use_word_sim=False):
+    if use_word_sim: assert vocab_weights is None
     
     ret_words = list(words)
     for pos in sub_positions:
         word = words[pos]
         if use_word_sim:
-            vocabWeights = get_similarities(word, vocab)
+            vocab_weights = get_similarities(word, vocab)
         while(word==words[pos]):
-            word = np.random.choice(vocab, p=vocabWeights)
+            word = np.random.choice(vocab, p=vocab_weights)
         ret_words[pos] = word
     for pos in del_positions:
         ret_words[pos] = None
     for pos in reversed(sorted(ins_positions)):
-        word = np.random.choice(vocab)
+        if use_word_sim:
+            vocab_weights = get_similarities("", vocab)
+        word = np.random.choice(vocab, p=vocab_weights)
         ret_words.insert(pos, word)
     ret_words = [w for w in ret_words if w is not None]
     return ret_words
@@ -222,18 +224,18 @@ def main(argv=None):
     assumeCharTokens = arguments["--char-tokens"]
     
     vocab = []
-    vocabWeights = None
+    vocab_weights = None
     if vocabFileName:
         for v in io.open(vocabFileName).readlines():
             vocab.append(v.strip())
     elif weightedVocabFileName:
-        vocabWeights = []
+        vocab_weights = []
         for line in io.open(weightedVocabFileName).readlines():
             vocab.append(line.split()[1])
-            vocabWeights.append(float(line.split()[0]))
-        weightSum = sum(vocabWeights)
-        for i in range(len(vocabWeights)):
-            vocabWeights[i] /= weightSum
+            vocab_weights.append(float(line.split()[0]))
+        weightSum = sum(vocab_weights)
+        for i in range(len(vocab_weights)):
+            vocab_weights[i] /= weightSum
     else:
         vocabSet = set()
         for line in io.open(inputFileName):
@@ -261,7 +263,7 @@ def main(argv=None):
                         sample_corrupted(
                                         words=words, 
                                         tau=tau, vocab=vocab,
-                                        vocabWeights=vocabWeights,
+                                        vocab_weights=vocab_weights,
                                         op_weights=op_weights,
                                         ignoreVocab=ignoreVocab)
         total_sub += num_sub
