@@ -6,15 +6,14 @@ from xnmt.settings import settings
 import numpy as np
 import dynet as dy
 
-from xnmt.training_task import SimpleTrainingTask
-from xnmt.events import register_xnmt_event_sum
 from xnmt.model_base import ConditionedModel
 from xnmt.loss_tracker import TrainLossTracker
 from xnmt.loss_calculator import LossCalculator, AutoRegressiveMLELoss
 from xnmt.param_collection import ParamManager
 from xnmt.persistence import serializable_init, Serializable, bare, Ref
-from xnmt import training_task, optimizer, batcher, eval_task, util
+from xnmt import training_task, optimizer, batcher, eval_task, util, diagnostics
 from xnmt import logger
+from xnmt import events
 
 class TrainingRegimen(object):
   """
@@ -455,7 +454,7 @@ class SerialMultiTaskTrainingRegimen(MultiTaskTrainingRegimen, Serializable):
       if should_save:
         save_fct()
 
-class DiagnosticsTrainingRegimen(SimpleTrainingTask, TrainingRegimen, Serializable):
+class DiagnosticsTrainingRegimen(training_task.SimpleTrainingTask, TrainingRegimen, Serializable):
   yaml_tag = '!DiagnosticsTrainingRegimen'
   @serializable_init
   def __init__(self, model: ConditionedModel = Ref("model"), src_file: Union[None, str, Sequence[str]] = None,
@@ -513,10 +512,12 @@ class DiagnosticsTrainingRegimen(SimpleTrainingTask, TrainingRegimen, Serializab
       loss = loss_builder.compute()
       self.backward(loss, self.dynet_profiling)
       self.update(self.trainer)
-    outputs = self.collect_recent_outputs()
+    # outputs = self.collect_recent_outputs()
+    outputs = diagnostics.diagnose_expressions
     self.print_fwd_stats(outputs)
 
-  @register_xnmt_event_sum
+  # TODO: remove this
+  @events.register_xnmt_event_sum
   def collect_recent_outputs(self):
     pass
 

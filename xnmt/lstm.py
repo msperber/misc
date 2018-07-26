@@ -10,6 +10,7 @@ from xnmt.param_collection import ParamManager
 from xnmt.param_init import GlorotInitializer, ZeroInitializer
 from xnmt.transducer import SeqTransducer, FinalTransducerState
 from xnmt.persistence import serializable_init, Serializable, Ref, bare
+from xnmt.diagnostics import diagnose
 
 class UniLSTMState(object):
   """
@@ -289,7 +290,8 @@ class BiLSTMSeqTransducer(SeqTransducer, Serializable):
     # first layer
     forward_es = self.forward_layers[0].transduce(es)
     rev_backward_es = self.backward_layers[0].transduce(ReversedExpressionSequence(es))
-    self.last_output.append(forward_es.as_list() + rev_backward_es.as_list())
+    diagnose(self, forward_es.as_list() + rev_backward_es.as_list())
+    # self.last_output.append(forward_es.as_list() + rev_backward_es.as_list())
 
     for layer_i in range(1, len(self.forward_layers)):
       new_forward_es = self.forward_layers[layer_i].transduce([forward_es, ReversedExpressionSequence(rev_backward_es)])
@@ -298,6 +300,7 @@ class BiLSTMSeqTransducer(SeqTransducer, Serializable):
         mask=mask)
       forward_es = new_forward_es
       self.last_output.append(forward_es.as_list() + rev_backward_es.as_list())
+      diagnose(self, forward_es.as_list() + rev_backward_es.as_list())
 
     self._final_states = [FinalTransducerState(dy.concatenate([self.forward_layers[layer_i].get_final_states()[0].main_expr(),
                                                             self.backward_layers[layer_i].get_final_states()[0].main_expr()]),

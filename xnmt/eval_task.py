@@ -4,7 +4,7 @@ from xnmt.settings import settings
 
 import dynet as dy
 
-from xnmt.batcher import Batcher
+from xnmt import batcher
 from xnmt.evaluator import Evaluator
 from xnmt import model_base
 import xnmt.inference
@@ -42,7 +42,7 @@ class LossEvalTask(EvalTask, Serializable):
 
   @serializable_init
   def __init__(self, src_file: str, ref_file: Optional[str] = None, model: 'model_base.GeneratorModel' = Ref("model"),
-               batcher: Batcher = Ref("train.batcher", default=bare(xnmt.batcher.SrcBatcher, batch_size=32)),
+               batcher: batcher.Batcher = Ref("train.batcher", default=bare(batcher.SrcBatcher, batch_size=32)),
                loss_calculator: LossCalculator = bare(AutoRegressiveMLELoss), max_src_len: Optional[int] = None,
                max_trg_len: Optional[int] = None,
                loss_comb_method: str = Ref("exp_global.loss_comb_method", default="sum"), desc: Any = None):
