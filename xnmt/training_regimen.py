@@ -14,6 +14,7 @@ from xnmt.loss_calculator import LossCalculator, AutoRegressiveMLELoss
 from xnmt.param_collection import ParamManager
 from xnmt.persistence import serializable_init, Serializable, bare, Ref
 from xnmt import training_task, optimizer, batcher, eval_task, util
+from xnmt import logger
 
 class TrainingRegimen(object):
   """
@@ -166,82 +167,6 @@ class SimpleTrainingRegimen(training_task.SimpleTrainingTask, TrainingRegimen, S
     else:
       assert 0 < self.num_updates_skipped < self.update_every
 
-
-
-class DiagnosticsTrainingRegimen(SimpleTrainingTask, TrainingRegimen, Serializable):
-  yaml_tag = '!DiagnosticsTrainingRegimen'
-  def __init__(self, model=Ref(path="model"), src_file=None, trg_file=None,
-               dev_every=0, batcher=batcher.SrcBatcher(32),
-               loss_calculator=None, trainer=None, run_for_epochs=None,
-               lr_decay=1.0, lr_decay_times=3, patience=1, initial_patience=None,
-               dev_tasks=None, restart_trainer=False, reload_command=None,
-               name=None, sample_train_sents=None, max_num_train_sents=None,
-               max_src_len=None, max_trg_len=None,
-               xnmt_global=Ref("xnmt_global")):
-    super().__init__(model=model,
-                     src_file=src_file,
-                     trg_file=trg_file,
-                     dev_every=dev_every,
-                     batcher=batcher,
-                     loss_calculator=loss_calculator, 
-                     run_for_epochs=1,
-                     lr_decay=lr_decay,
-                     lr_decay_times=lr_decay_times,
-                     patience=patience,
-                     initial_patience=initial_patience,
-                     dev_tasks=None,
-                     restart_trainer=restart_trainer,
-                     reload_command=reload_command,
-                     name=name,
-                     sample_train_sents=sample_train_sents,
-                     max_num_train_sents=1,
-                     max_src_len=max_src_len,
-                     max_trg_len=max_trg_len,
-                     xnmt_global=xnmt_global)
-    self.trainer = trainer or optimizer.SimpleSGDTrainer(xnmt_global=self.xnmt_global, e0=0.1)
-    self.dynet_profiling = getattr(xnmt_global.commandline_args, "dynet_profiling", 0)
-
-  def run_training(self, save_fct, update_weights=True):
-    """
-    Main training loop (overwrites TrainingRegimen.run_training())
-    """
-    self.load_data()
-    self.model.set_train(update_weights)
-    src,trg = next(self.next_minibatch())
-    dy.renew_cg(immediate_compute=settings.IMMEDIATE_COMPUTE, check_validity=settings.CHECK_VALIDITY)
-    loss = self.training_step(src, trg)
-    if update_weights: self.update_weights(loss, self.trainer, self.dynet_profiling)
-    outputs = self.collect_recent_outputs()
-    self.print_fwd_stats(outputs)
-
-  @register_xnmt_event_sum
-  def collect_recent_outputs(self):
-    pass
-
-  @staticmethod
-  def print_fwd_stats(outputs):
-    print("{:<70} | {:<21} | {:<21}".format("Component", "Activations", "Gradients"))
-    print("{:<70} | {:<10} {:<10} | {:<10} {:<10}".format("", "mean", "std", "mean", "std"))
-    print("-" * 125)
-    for component, expr in outputs:
-      if isinstance(expr, list) and isinstance(expr[0], dy.Expression):
-        activations = np.asarray([x.npvalue() for x in expr])
-        gradients = np.asarray([x.gradient() for x in expr])
-      elif isinstance(expr, dy.Expression):
-        activations = expr.npvalue()
-        gradients = expr.gradient()
-      elif isinstance(expr, list) and isinstance(expr[0], dy.RNNState):
-        activations = np.asarray([e.h()[0].value() for e in expr] + [e.s()[0].value() for e in expr])
-        gradients = np.asarray([e.h()[0].gradient() for e in expr] + [e.s()[0].gradient() for e in expr])
-      else:
-        raise ValueError(f"unknown output type received: {expr}")
-      mean_act = np.average(activations)
-      std_act = np.std(activations)
-      mean_grad = np.average(gradients)
-      std_grad = np.std(gradients)
-      print("{:<70} | {:<10.3} {:<10.3} | {:<10.3} {:<10.3}".format(str(component), mean_act, std_act, mean_grad, std_grad))
-    print("consider adjusting the param initialization scale if values are too small or large; see \"Deep Learning\" by Goodfellow, Bengio, Courville, section 8.4")
-    exit()
 
 class MultiTaskTrainingRegimen(TrainingRegimen):
   """
@@ -529,3 +454,96 @@ class SerialMultiTaskTrainingRegimen(MultiTaskTrainingRegimen, Serializable):
       should_save = cur_task.checkpoint(control_learning_schedule=True)
       if should_save:
         save_fct()
+
+class DiagnosticsTrainingRegimen(SimpleTrainingTask, TrainingRegimen, Serializable):
+  yaml_tag = '!DiagnosticsTrainingRegimen'
+  @serializable_init
+  def __init__(self, model: ConditionedModel = Ref("model"), src_file: Union[None, str, Sequence[str]] = None,
+               trg_file: Optional[str] = None, dev_every: int = 0, dev_zero: bool = False,
+               batcher: batcher.Batcher = bare(batcher.SrcBatcher, batch_size=32),
+               loss_calculator: LossCalculator = bare(AutoRegressiveMLELoss),
+               trainer: optimizer.XnmtOptimizer = bare(optimizer.SimpleSGDTrainer, e0=0.1),
+               run_for_epochs: Optional[int] = None, lr_decay: float = 1.0, lr_decay_times: int = 3, patience: int = 1,
+               initial_patience: Optional[int] = None, dev_tasks: Sequence[eval_task.EvalTask] = None,
+               dev_combinator: Optional[str] = None, restart_trainer: bool = False,
+               reload_command: Optional[str] = None, name: str = "{EXP}", sample_train_sents: Optional[int] = None,
+               max_num_train_sents: Optional[int] = None, max_src_len: Optional[int] = None,
+               max_trg_len: Optional[int] = None,
+               loss_comb_method: str = Ref("exp_global.loss_comb_method", default="sum"),
+               update_every: int = 1,
+               commandline_args: dict = Ref("exp_global.commandline_args", default={})) -> None:
+
+    super().__init__(model=model,
+                     src_file=src_file,
+                     trg_file=trg_file,
+                     dev_every=dev_every,
+                     batcher=batcher,
+                     loss_calculator=loss_calculator,
+                     run_for_epochs=run_for_epochs,
+                     lr_decay=lr_decay,
+                     lr_decay_times=lr_decay_times,
+                     patience=patience,
+                     initial_patience=initial_patience,
+                     dev_tasks=dev_tasks,
+                     dev_combinator=dev_combinator,
+                     restart_trainer=restart_trainer,
+                     reload_command=reload_command,
+                     name=name,
+                     sample_train_sents=sample_train_sents,
+                     max_num_train_sents=max_num_train_sents,
+                     max_src_len=max_src_len,
+                     max_trg_len=max_trg_len)
+    self.dev_zero = dev_zero
+    self.trainer = trainer or optimizer.SimpleSGDTrainer(e0=0.1)
+    self.dynet_profiling = commandline_args.get("dynet_profiling", 0) if commandline_args else 0
+    self.train_loss_tracker = TrainLossTracker(self)
+    self.loss_comb_method = loss_comb_method
+    self.update_every = update_every
+    self.num_updates_skipped = 0
+
+  def run_training(self, save_fct):
+    """
+    Main training loop (overwrites TrainingRegimen.run_training())
+    """
+    src, trg = next(self.next_minibatch())
+    with util.ReportOnException({"src": src, "trg": trg, "graph": dy.print_text_graphviz}):
+      dy.renew_cg(immediate_compute=settings.IMMEDIATE_COMPUTE, check_validity=settings.CHECK_VALIDITY)
+      self.model.set_train(True)
+      loss_builder = self.training_step(src, trg)
+      loss = loss_builder.compute()
+      self.backward(loss, self.dynet_profiling)
+      self.update(self.trainer)
+    outputs = self.collect_recent_outputs()
+    self.print_fwd_stats(outputs)
+
+  @register_xnmt_event_sum
+  def collect_recent_outputs(self):
+    pass
+
+  @staticmethod
+  def print_fwd_stats(outputs):
+    print("{:<70} | {:<21} | {:<21}".format("Component", "Activations", "Gradients"))
+    print("{:<70} | {:<10} {:<10} | {:<10} {:<10}".format("", "mean", "std", "mean", "std"))
+    print("-" * 125)
+    if outputs:
+      for component, expr in outputs:
+        if isinstance(expr, list) and isinstance(expr[0], dy.Expression):
+          activations = np.asarray([x.npvalue() for x in expr])
+          gradients = np.asarray([x.gradient() for x in expr])
+        elif isinstance(expr, dy.Expression):
+          activations = expr.npvalue()
+          gradients = expr.gradient()
+        elif isinstance(expr, list) and isinstance(expr[0], dy.RNNState):
+          activations = np.asarray([e.h()[0].value() for e in expr] + [e.s()[0].value() for e in expr])
+          gradients = np.asarray([e.h()[0].gradient() for e in expr] + [e.s()[0].gradient() for e in expr])
+        else:
+          raise ValueError(f"unknown output type received: {expr}")
+        mean_act = np.average(activations)
+        std_act = np.std(activations)
+        mean_grad = np.average(gradients)
+        std_grad = np.std(gradients)
+        print("{:<70} | {:<10.3} {:<10.3} | {:<10.3} {:<10.3}".format(str(component), mean_act, std_act, mean_grad, std_grad))
+      print("consider adjusting the param initialization scale if values are too small or large; see \"Deep Learning\" by Goodfellow, Bengio, Courville, section 8.4")
+    else:
+      logger.error("There were no outputs reported for diagnostics.")
+    exit()
