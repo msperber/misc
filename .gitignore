@@ -4,7 +4,11 @@ __pycache__
 *.pyc
 *.so
 .idea
+.mypy_cache
 examples/output
+examples/logs
+examples/models
+examples/reports
 doc/build
 xnmt.egg-info
 build/
@@ -12,5 +16,14 @@ xnmt/cython/*.cpp
 xnmt/cython/*.c
 xnmt/cython/*.so
 test/tmp
+test/config/logs/
+test/config/models/
+test/config/reports/
 /*.yaml
 examples/preproc/
+.project
+.pydevproject
+.settings/
+dist/
+docs/_build/
+docs/examples

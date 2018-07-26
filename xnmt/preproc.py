@@ -1,47 +1,73 @@
+import time
 import sys
 import os.path
 import subprocess
-from xnmt.serialize.serializable import Serializable
+from collections import defaultdict
+import unicodedata
+import re
+
+import numpy as np
+import warnings
+with warnings.catch_warnings():
+  warnings.simplefilter("ignore", lineno=36)
+  import h5py
+import yaml
+
+from xnmt import logger
+from xnmt.persistence import serializable_init, Serializable
+from xnmt.thirdparty.speech_features import logfbank, calculate_delta, get_mean_std, normalize
+from xnmt.util import make_parent_dir
 
 ##### Preprocessors
 
 class Normalizer(object):
   """A type of normalization to perform to a file. It is initialized first, then expanded."""
 
-  def __init__(self, spec=None):
-    """Initialize the normalizer from a specification."""
-    pass
-
   def normalize(self, sent):
     """Takes a plain text string and converts it into another plain text string after preprocessing."""
     raise RuntimeError("Subclasses of Normalizer must implement the normalize() function")
 
-  @staticmethod
-  def from_spec(spec):
-    """Takes a list of normalizer specifications, and returns the appropriate processors."""
-    preproc_list = []
-    if spec != None:
-      for my_spec in spec:
-        if my_spec["type"] == "lower":
-          preproc_list.append(NormalizerLower(my_spec))
-        else:
-          raise RuntimeError("Unknown normalizer type {}".format(my_spec["type"]))
-    return preproc_list
-
-class NormalizerLower(Normalizer):
+class NormalizerLower(Normalizer, Serializable):
   """Lowercase the text."""
+
+  yaml_tag = "!NormalizerLower"
 
   def normalize(self, sent):
     return sent.lower()
 
+class NormalizerRemovePunct(Normalizer, Serializable):
+  """Remove punctuation from the text.
+
+  Args:
+    remove_inside_word: If ``False``, only remove punctuation appearing adjacent to white space.
+    allowed_chars: Specify punctuation that is allowed and should not be removed.
+  """
+  yaml_tag = "!NormalizerRemovePunct"
+
+  @serializable_init
+  def __init__(self, remove_inside_word:bool=False, allowed_chars:str="") -> None:
+    self.remove_inside_word = remove_inside_word
+    self.exclude = set(chr(i) for i in range(sys.maxunicode) if unicodedata.category(chr(i)).startswith('P')
+                                                              and chr(i) not in set(allowed_chars))
+  def normalize(self, sent):
+    if self.remove_inside_word:
+      ret = ''.join(ch for ch in sent if ch not in self.exclude)
+    else:
+      words = []
+      for w in sent.split():
+        words.append(w.strip(''.join(ch for ch in self.exclude)))
+      ret = " ".join(words)
+    return " ".join(ret.split())
+
 ###### Tokenizers
 
-class Tokenizer(Normalizer, Serializable):
+class Tokenizer(Normalizer):
   """
   Pass the text through an internal or external tokenizer.
 
   TODO: only StreamTokenizers are supported by the preproc runner right now.
   """
+
   def tokenize(self, sent):
     raise RuntimeError("Subclasses of Tokenizer must implement tokenize() or tokenize_stream()")
 
@@ -49,22 +75,25 @@ class Tokenizer(Normalizer, Serializable):
     """
     Tokenize a file-like text stream.
 
-    :param stream: A file-like stream of untokenized text
-    :return: A file-like stream of tokenized text
+    Args:
+      stream: A file-like stream of untokenized text
+    Returns:
+      A file-like stream of tokenized text
 
     """
-    print("****** calling tokenize_stream {}".format(self.__class__))
+    logger.debug("****** calling tokenize_stream {}".format(self.__class__))
     for line in stream:
       yield self.tokenize(line.strip())
 
-class BPETokenizer(Tokenizer):
+class BPETokenizer(Tokenizer, Serializable):
   """
   Class for byte-pair encoding tokenizer.
 
   TODO: Unimplemented
   """
-  yaml_tag = u'!BPETokenizer'
+  yaml_tag = '!BPETokenizer'
 
+  @serializable_init
   def __init__(self, vocab_size, train_files):
     """Determine the BPE based on the vocab size and corpora"""
     raise NotImplementedError("BPETokenizer is not implemented")
@@ -73,17 +102,84 @@ class BPETokenizer(Tokenizer):
     """Tokenizes a single sentence according to the determined BPE."""
     raise NotImplementedError("BPETokenizer is not implemented")
 
-class CharacterTokenizer(Tokenizer):
+class CharacterTokenizer(Tokenizer, Serializable):
   """
   Tokenize into characters, with __ indicating blank spaces
   """
-  yaml_tag = u'!CharacterTokenizer'
+  yaml_tag = '!CharacterTokenizer'
+
+  @serializable_init
+  def __init__(self):
+    pass
 
   def tokenize(self, sent):
     """Tokenizes a single sentence into characters."""
     return ' '.join([('__' if x == ' ' else x) for x in sent])
 
-class ExternalTokenizer(Tokenizer):
+class UnicodeTokenizer(Tokenizer, Serializable):
+  """
+  Tokenizer that inserts whitespace between words and punctuation.
+
+  This tokenizer is language-agnostic and (optionally) reversible, and is based on unicode character categories.
+  See appendix of https://arxiv.org/pdf/1804.08205
+
+  Args:
+    use_merge_symbol: whether to prepend a merge-symbol so that the tokenization becomes reversible
+    merge_symbol: the merge symbol to use
+    reverse: whether to reverse tokenization (assumes use_merge_symbol=True was used in forward direction)
+  """
+  yaml_tag = '!UnicodeTokenizer'
+
+  @serializable_init
+  def __init__(self, use_merge_symbol: bool = True, merge_symbol: str = '↹', reverse: bool = False):
+    self.merge_symbol = merge_symbol if use_merge_symbol else ''
+    self.reverse = reverse
+
+  def tokenize(self, sent: str) -> str:
+    """Tokenizes a single sentence.
+
+    Args:
+      sent: input sentence
+    Returns:
+      output sentence
+    """
+    str_list = []
+    if not self.reverse:
+      for i in range(len(sent)):
+        c = sent[i]
+        c_p = sent[i - 1] if i > 0 else c
+        c_n = sent[i + 1] if i < len(sent) - 1 else c
+
+        if not UnicodeTokenizer._is_weird(c):
+          str_list.append(c)
+        else:
+          if not c_p.isspace():
+            str_list.append(' ' + self.merge_symbol)
+            str_list.append(c)
+          if not c_n.isspace() and not UnicodeTokenizer._is_weird(c_n):
+            str_list.append(self.merge_symbol + ' ')
+    else: # self.reverse==True
+      i = 0
+      while i < len(sent):
+        c = sent[i]
+        c_n = sent[i + 1] if i < len(sent) - 1 else c
+        c_nn = sent[i + 2] if i < len(sent) - 2 else c
+
+        if c + c_n == ' ' + self.merge_symbol and UnicodeTokenizer._is_weird(c_nn):
+          i += 2
+        elif UnicodeTokenizer._is_weird(c) and c_n + c_nn == self.merge_symbol + ' ':
+          str_list.append(c)
+          i += 3
+        else:
+          str_list.append(c)
+          i += 1
+    return ''.join(str_list)
+
+  @staticmethod
+  def _is_weird(c):
+    return not (unicodedata.category(c)[0] in 'LMN' or c.isspace())
+
+class ExternalTokenizer(Tokenizer, Serializable):
   """
   Class for arbitrary external tokenizer that accepts untokenized text to stdin and
   emits tokenized tezt to stdout, with passable parameters.
@@ -92,10 +188,12 @@ class ExternalTokenizer(Tokenizer):
   once per file, so are run as such (instead of one-execution-per-line.)
 
   """
-  yaml_tag = u'!ExternalTokenizer'
+  yaml_tag = '!ExternalTokenizer'
 
-  def __init__(self, path, tokenizer_args={}, arg_separator=' '):
+  @serializable_init
+  def __init__(self, path, tokenizer_args=None, arg_separator=' '):
     """Initialize the wrapper around the external tokenizer. """
+    if tokenizer_args is None: tokenizer_args = {}
     tokenizer_options = []
     if arg_separator != ' ':
       tokenizer_options = [option + arg_separator + str(tokenizer_args[option])
@@ -110,33 +208,46 @@ class ExternalTokenizer(Tokenizer):
     """
     Pass the sentence through the external tokenizer.
 
-    :param sent: An untokenized sentence
-    :return: A tokenized sentence
+    Args:
+      sent: An untokenized sentence
+    Return:
+      A tokenized sentence
 
     """
     encode_proc = subprocess.Popen(self.tokenizer_command, stdin=subprocess.PIPE
         , stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if isinstance(sent, str):
-      string = sent.encode('utf-8')
-    stdout, stderr = encode_proc.communicate(string)
+      sent = sent.encode('utf-8')
+    stdout, stderr = encode_proc.communicate(sent)
+    if isinstance(stdout, bytes):
+      stdout = stdout.decode('utf-8')
     if stderr:
       if isinstance(stderr, bytes):
         stderr = stderr.decode('utf-8')
       sys.stderr.write(stderr + '\n')
     return stdout
 
-class SentencepieceTokenizer(ExternalTokenizer):
+class SentencepieceTokenizer(Tokenizer, Serializable):
   """
-  A wrapper around an independent installation of the sentencepiece tokenizer
-  with passable parameters.
-  """
-  yaml_tag = u'!SentencepieceTokenizer'
+  Sentencepiece tokenizer
+  The options supported by the SentencepieceTokenizer are almost exactly those presented in the Sentencepiece `readme <https://github.com/google/sentencepiece/blob/master/README.md>`_, namely:
 
-  def __init__(self, path, train_files, vocab_size, overwrite=False, model_prefix='sentpiece'
-      , output_format='piece', model_type='bpe'
+    - ``model_type``: Either ``unigram`` (default), ``bpe``, ``char`` or ``word``.
+      Please refer to the sentencepiece documentation for more details
+    - ``model_prefix``: The trained bpe model will be saved under ``{model_prefix}.model``/``.vocab``
+    - ``vocab_size``: fixes the vocabulary size
+    - ``hard_vocab_limit``: setting this to ``False`` will make the vocab size a soft limit. 
+      Useful for small datasets. This is ``True`` by default.
+  """
+
+  yaml_tag = '!SentencepieceTokenizer'
+
+  @serializable_init
+  def __init__(self, train_files, vocab_size, overwrite=False, model_prefix='sentpiece'
+      , output_format='piece', model_type='bpe', hard_vocab_limit=True
       , encode_extra_options=None, decode_extra_options=None):
     """
-    Initialize the wrapper around sentencepiece and train the tokenizer.
+    This will initialize and train the sentencepiece tokenizer.
 
     If overwrite is set to False, learned model will not be overwritten, even if parameters
     are changed.
@@ -144,42 +255,47 @@ class SentencepieceTokenizer(ExternalTokenizer):
     "File" output for Sentencepiece written to StringIO temporarily before being written to disk.
 
     """
-    self.sentpiece_path = path
     self.model_prefix = model_prefix
     self.output_format = output_format
     self.input_format = output_format
+    self.overwrite = overwrite
     self.encode_extra_options = ['--extra_options='+encode_extra_options] if encode_extra_options else []
     self.decode_extra_options = ['--extra_options='+decode_extra_options] if decode_extra_options else []
 
-    if not os.path.exists(os.path.dirname(model_prefix)):
-      try:
-        os.makedirs(os.path.dirname(model_prefix))
-      except OSError as exc:
-        if exc.errno != os.errno.EEXIST:
-          raise
+    make_parent_dir(model_prefix)
+    self.sentpiece_train_args = ['--input=' + ','.join(train_files),
+                                 '--model_prefix=' + str(model_prefix),
+                                 '--vocab_size=' + str(vocab_size),
+                                 '--hard_vocab_limit=' + str(hard_vocab_limit).lower(),
+                                 '--model_type=' + str(model_type)
+                                ]
 
+    self.sentpiece_processor = None
+
+  def init_sentencepiece(self):
+    import sentencepiece as spm
     if ((not os.path.exists(self.model_prefix + '.model')) or
         (not os.path.exists(self.model_prefix + '.vocab')) or
-        overwrite):
-      sentpiece_train_exec_loc = os.path.join(path, 'spm_train')
-      sentpiece_train_command = [sentpiece_train_exec_loc
-          , '--input=' + ','.join(train_files)
-          , '--model_prefix=' + str(model_prefix)
-          , '--vocab_size=' + str(vocab_size)
-          , '--model_type=' + str(model_type)
-          ]
-      subprocess.call(sentpiece_train_command)
+        self.overwrite):
+      # This calls sentencepiece. It's pretty verbose
+      spm.SentencePieceTrainer.Train(' '.join(self.sentpiece_train_args))
+    
+    self.sentpiece_processor = spm.SentencePieceProcessor()
+    self.sentpiece_processor.Load('%s.model' % self.model_prefix)
 
-    sentpiece_encode_exec_loc = os.path.join(self.sentpiece_path, 'spm_encode')
-    sentpiece_encode_command = [sentpiece_encode_exec_loc
-        , '--model=' + self.model_prefix + '.model'
-        , '--output_format=' + self.output_format
-        ] + self.encode_extra_options
-    self.tokenizer_command = sentpiece_encode_command
+    self.sentpiece_encode = self.sentpiece_processor.EncodeAsPieces if self.output_format == 'piece' else self.sentpiece_processor.EncodeAsIds
+
+  
+  def tokenize(self, sent):
+    """Tokenizes a single sentence into pieces."""
+    if self.sentpiece_processor is None:
+        self.init_sentencepiece()
+    return ' '.join(self.sentpiece_encode(sent))
+
 
 ##### Sentence filterers
 
-class SentenceFilterer():
+class SentenceFilterer(object):
   """Filters sentences that don't match a criterion."""
 
   def __init__(self, spec):
@@ -192,8 +308,10 @@ class SentenceFilterer():
     In general, these inputs/outpus should already be segmented into words, so len() will return the number of words,
     not the number of characters.
 
-    :param sents: A list of parallel sentences.
-    :returns: True if they should be used or False if they should be filtered.
+    Args:
+      sents: A list of parallel sentences.
+    Returns:
+      True if they should be used or False if they should be filtered.
     """
     raise RuntimeError("Subclasses of SentenceFilterer must implement the keep() function")
 
@@ -201,15 +319,53 @@ class SentenceFilterer():
   def from_spec(spec):
     """Takes a list of preprocessor specifications, and returns the appropriate processors."""
     preproc_list = []
-    if spec != None:
+    if spec is not None:
       for my_spec in spec:
         if my_spec["type"] == "length":
           preproc_list.append(SentenceFiltererLength(my_spec))
+        elif my_spec["type"] == "matching-regex":
+          preproc_list.append(SentenceFiltererMatchingRegex(my_spec))
         else:
           raise RuntimeError("Unknown preprocessing type {}".format(my_spec["type"]))
     return preproc_list
 
-class SentenceFiltererLength(object):
+class SentenceFiltererMatchingRegex(SentenceFilterer):
+  """Filters sentences via regular expressions.
+  A sentence must match the expression to be kept.
+  """
+  def __init__(self, spec):
+    """Specifies the regular expressions to filter the sentences that we'll be getting.
+
+    The regular expressions are passed as a dictionary with keys as follows:
+      regex_INT: This will specify the regular expression for a specific language (zero indexed)
+      regex_src: Equivalent to regex_0
+      regex_trg: Equivalent to regex_1
+    """
+    self.regex = {}
+    idx_map = {"src": 0, "trg": 1}
+    for k, v in spec.items():
+      if k == "type":
+        pass
+      elif k.startswith("regex"):
+        _, idx = k.split("_")
+        idx_tmp = idx_map.get(idx)
+        if idx_tmp is None:
+          idx_tmp = int(idx)
+        idx = idx_tmp
+        self.regex[idx] = v
+
+  def keep(self, sents):
+    """ Keep only sentences that match the regex.
+    """
+    for i, sent in enumerate(sents):
+      if type(sent) == list:
+        sent = " ".join(sent)
+      if self.regex.get(i) is not None:
+        if re.search(self.regex[i], sent) is None:
+          return False
+    return True
+
+class SentenceFiltererLength(SentenceFilterer):
   """Filters sentences by length"""
 
   def __init__(self, spec):
@@ -235,10 +391,14 @@ class SentenceFiltererLength(object):
         self.overall_min = v
       else:
         direc, idx = k.split('_')
-        idx = idx_map.get(idx_map, int(idx))
+        idx_tmp = idx_map.get(idx)
+        if idx_tmp is None:
+          idx_tmp = int(idx)
+        idx = idx_tmp
+
         if direc == "max":
           self.each_max[idx] = v
-        elif direc == "max":
+        elif direc == "min":
           self.each_min[idx] = v
         else:
           raise RuntimeError("Unknown limitation type {} in length-based sentence filterer".format(k))
@@ -266,8 +426,10 @@ class VocabFilterer(object):
   def filter(self, vocab):
     """Filter a vocabulary.
 
-    :param vocab: A dictionary of vocabulary words with their frequecies.
-    :returns: A new dictionary with frequencies containing only the words to leave in the vocabulary.
+    Args:
+      vocab: A dictionary of vocabulary words with their frequecies.
+    Returns:
+      A new dictionary with frequencies containing only the words to leave in the vocabulary.
     """
     raise RuntimeError("Subclasses of VocabFilterer must implement the filter() function")
 
@@ -275,7 +437,7 @@ class VocabFilterer(object):
   def from_spec(spec):
     """Takes a list of preprocessor specifications, and returns the appropriate processors."""
     preproc_list = []
-    if spec != None:
+    if spec is not None:
       for my_spec in spec:
         if my_spec["type"] == "freq":
           preproc_list.append(VocabFiltererFreq(my_spec))
@@ -285,24 +447,82 @@ class VocabFilterer(object):
           raise RuntimeError("Unknown VocabFilterer type {}".format(my_spec["type"]))
     return preproc_list
 
-class VocabFiltererFreq(VocabFilterer):
+class VocabFiltererFreq(VocabFilterer, Serializable):
   """Filter the vocabulary, removing words below a particular minimum frequency"""
-
-  def __init__(self, spec):
+  yaml_tag = "!VocabFiltererFreq"
+  @serializable_init
+  def __init__(self, min_freq):
     """Specification contains a single value min_freq"""
-    self.min_freq = spec["min_freq"]
+    self.min_freq = min_freq
 
   def filter(self, vocab):
     return {k: v for k, v in vocab.items() if v >= self.min_freq}
 
-class VocabFiltererRank(VocabFilterer):
+class VocabFiltererRank(VocabFilterer, Serializable):
   """Filter the vocabulary, removing words above a particular frequency rank"""
-
-  def __init__(self, spec):
+  yaml_tag = "!VocabFiltererRank"
+  @serializable_init
+  def __init__(self, max_rank):
     """Specification contains a single value max_rank"""
-    self.max_rank = spec["max_rank"]
+    self.max_rank = max_rank
 
   def filter(self, vocab):
     if len(vocab) <= self.max_rank:
       return vocab
     return {k: v for k, v in sorted(vocab.items(), key=lambda x: -x[1])[:self.max_rank]}
+
+##### Preprocessors
+
+class Extractor(object):
+  """A type of feature extraction to perform."""
+
+  def extract_to(self, in_file, out_file):
+    raise RuntimeError("Subclasses of Extractor must implement the extract_to() function")
+
+class MelFiltExtractor(Extractor, Serializable):
+  yaml_tag = "!MelFiltExtractor"
+  @serializable_init
+  def __init__(self, nfilt=40, delta=False):
+    self.delta = delta
+    self.nfilt = nfilt
+  def extract_to(self, in_file, out_file):
+    """
+    Args:
+      in_file: yaml file that contains a list of dictionaries.
+               Each dictionary contains:
+               - wav (str): path to wav file
+               - offset (float): start time stamp (optional)
+               - duration (float): stop time stamp (optional)
+               - speaker: speaker id for normalization (optional; if not given, the filename is used as speaker id)
+      out_file: a filename ending in ".h5"
+    """
+    import librosa
+    if not out_file.endswith(".h5"): raise ValueError(f"out_file must end in '.h5', was '{out_file}'")
+    start_time = time.time()
+    with open(in_file) as in_stream, \
+         h5py.File(out_file, "w") as hf:
+      db = yaml.load(in_stream)
+      db_by_speaker = defaultdict(list)
+      for db_index, db_item in enumerate(db):
+        speaker_id = db_item.get("speaker", db_item["wav"].split("/")[-1])
+        db_item["index"] = db_index
+        db_by_speaker[speaker_id].append(db_item)
+      for speaker_id in db_by_speaker.keys():
+        data = []
+        for db_item in db_by_speaker[speaker_id]:
+          y, sr = librosa.load(db_item["wav"], sr=16000,
+                               offset=db_item.get("offset", 0.0),
+                               duration=db_item.get("duration", None))
+          if len(y)==0: raise ValueError(f"encountered an empty or out of bounds segment: {db_item}")
+          logmel = logfbank(y, samplerate=sr, nfilt=self.nfilt)
+          if self.delta:
+            delta = calculate_delta(logmel)
+            features = np.concatenate([logmel, delta], axis=1)
+          else:
+            features = logmel
+          data.append(features)
+        mean, std = get_mean_std(np.concatenate(data))
+        for features, db_item in zip(data, db_by_speaker[speaker_id]):
+          features = normalize(features, mean, std)
+          hf.create_dataset(str(db_item["index"]), data=features)
+    logger.debug(f"feature extraction took {time.time()-start_time:.3f} seconds")

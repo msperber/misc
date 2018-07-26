@@ -1,8 +1,12 @@
-PyYAML>=3.12   
-six>=1.10.0   
+PyYAML==3.12 # higher versions incompatible with XNMT
 scipy>=0.19.0    
 lxml    
 dynet    
 matplotlib    
 cython   
-simple-settings==0.12.1
+h5py
+asteval
+numpy
+Unidecode>=1.0.22
+beautifulsoup4
+nltk

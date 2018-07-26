@@ -1,31 +1,32 @@
-from __future__ import division, generators
-
 import dynet as dy
+from typing import List
 
-from xnmt.transducer import SeqTransducer, FinalTransducerState
-from xnmt.serialize.serializable import Serializable
 from xnmt.expression_sequence import ExpressionSequence
-from xnmt.serialize.tree_tools import Ref, Path
+from xnmt.param_collection import ParamManager
+from xnmt.persistence import Serializable, serializable_init
+from xnmt.transducer import SeqTransducer, FinalTransducerState
 
 class ConvConnectedSeqTransducer(SeqTransducer, Serializable):
-  yaml_tag = u'!ConvConnectedSeqTransducer'
+  yaml_tag = '!ConvConnectedSeqTransducer'
   """
     Input goes through through a first convolution in time and space, no stride,
     dimension is not reduced, then CNN layer for each frame several times
     Embedding sequence has same length as Input sequence
     """
 
-  def __init__(self, input_dim, window_receptor,output_dim,num_layers,internal_dim,non_linearity='linear', exp_global=Ref(Path("exp_global"))):
+  @serializable_init
+  def __init__(self, input_dim, window_receptor,output_dim,num_layers,internal_dim,non_linearity='linear'):
     """
-      :param num_layers: num layers after first receptor conv
-      :param input_dim: size of the inputs
-      :param window_receptor: window for the receptor
-      :param ouput_dim: size of the outputs
-      :param internal_dim: size of hidden dimension, internal dimension
-      :param non_linearity: Non linearity to apply between layers
+    Args:
+      num_layers: num layers after first receptor conv
+      input_dim: size of the inputs
+      window_receptor: window for the receptor
+      ouput_dim: size of the outputs
+      internal_dim: size of hidden dimension, internal dimension
+      non_linearity: Non linearity to apply between layers
       """
 
-    model = exp_global.dynet_param_collection.param_col
+    model = ParamManager.my_params(self)
     self.input_dim = input_dim
     self.window_receptor = window_receptor
     self.internal_dim = internal_dim
@@ -43,26 +44,25 @@ class ConvConnectedSeqTransducer(SeqTransducer, Serializable):
     normalInit=dy.NormalInitializer(0, 0.1)
 
     self.pConv1 = model.add_parameters(dim = (self.input_dim,self.window_receptor,1,self.internal_dim),init=normalInit)
-    self.pBias1 = model.add_parameters(dim = (self.internal_dim))
+    self.pBias1 = model.add_parameters(dim = (self.internal_dim,))
     self.builder_layers = []
     for _ in range(num_layers):
         conv = model.add_parameters(dim = (self.internal_dim,1,1,self.internal_dim),init=normalInit)
-        bias = model.add_parameters(dim = (self.internal_dim))
+        bias = model.add_parameters(dim = (self.internal_dim,))
         self.builder_layers.append((conv,bias))
 
     self.last_conv = model.add_parameters(dim = (self.internal_dim,1,1,self.output_dim),init=normalInit)
-    self.last_bias = model.add_parameters(dim = (self.output_dim))
+    self.last_bias = model.add_parameters(dim = (self.output_dim,))
 
   def whoami(self): return "ConvConnectedEncoder"
 
-  def get_final_states(self):
+  def get_final_states(self) -> List[FinalTransducerState]:
     return self._final_states
 
-  def transduce(self, embed_sent):
+  def transduce(self, embed_sent: ExpressionSequence) -> ExpressionSequence:
     src = embed_sent.as_tensor()
 
     sent_len = src.dim()[0][1]
-    src_width = 1
     batch_size = src.dim()[1]
     pad_size = (self.window_receptor-1)/2 #TODO adapt it also for even window size
 
