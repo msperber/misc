@@ -42,9 +42,8 @@ class MLELoss(Serializable, LossCalculator):
 
   def calc_loss(self,
                 model: 'model_base.ConditionedModel',
-                src: Union[sent.Sentence, 'batchers.Batch'],
-                trg: Union[sent.Sentence, 'batchers.Batch']):
-    loss = model.calc_nll(src, trg)
+                **kwargs):
+    loss = model.calc_nll(**kwargs)
     return FactoredLossExpr({"mle": loss})
 
 class GlobalFertilityLoss(Serializable, LossCalculator):
@@ -91,7 +90,7 @@ class CompositeLoss(Serializable, LossCalculator):
                 trg: Union[sent.Sentence, 'batchers.Batch']):
     total_loss = FactoredLossExpr()
     for loss in self.losses:
-      total_loss.add_factored_loss_expr(loss.calc_loss(model, src, trg))
+      total_loss.add_factored_loss_expr(loss.calc_loss(model, src=src, trg=trg))
     return total_loss
 
 class ReinforceLoss(Serializable, LossCalculator):
@@ -243,7 +242,7 @@ class FeedbackLoss(Serializable, LossCalculator):
                 trg: Union[sent.Sentence, 'batcher.Batch']):
     loss_builder = FactoredLossExpr()
     for _ in range(self.repeat):
-      standard_loss = self.child_loss.calc_loss(model, src, trg)
+      standard_loss = self.child_loss.calc_loss(model, src=src, trg=trg)
       additional_loss = event_trigger.calc_additional_loss(trg, model, standard_loss)
       loss_builder.add_factored_loss_expr(standard_loss)
       loss_builder.add_factored_loss_expr(additional_loss)

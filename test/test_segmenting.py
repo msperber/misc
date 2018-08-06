@@ -95,7 +95,7 @@ class TestSegmentingEncoder(unittest.TestCase):
   def test_reinforce_loss(self):
     fertility_loss = GlobalFertilityLoss()
     mle_loss = MLELoss()
-    loss = CompositeLoss(losses=[mle_loss, fertility_loss]).calc_loss(self.model, self.src[0], self.trg[0])
+    loss = CompositeLoss(losses=[mle_loss, fertility_loss]).calc_loss(self.model, src=self.src[0], trg=self.trg[0])
     reinforce_loss = event_trigger.calc_additional_loss(self.trg[0], self.model, loss)
     pl = self.model.encoder.policy_learning
     # Ensure correct length
@@ -116,7 +116,7 @@ class TestSegmentingEncoder(unittest.TestCase):
     self.assertEqual(self.model.encoder.segmenting_action, SegmentingSeqTransducer.SegmentingAction.POLICY)
 
   def calc_loss_single_batch(self):
-    loss = MLELoss().calc_loss(self.model, self.src[0], self.trg[0])
+    loss = MLELoss().calc_loss(self.model, src=self.src[0], trg=self.trg[0])
     reinforce_loss = event_trigger.calc_additional_loss(self.trg[0], self.model, loss)
     return loss, reinforce_loss
 

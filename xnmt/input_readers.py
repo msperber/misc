@@ -392,7 +392,56 @@ class IDReader(BaseTextReader, Serializable):
   def read_sents(self, filename, filter_ids=None):
     return [l for l in self.iterate_filtered(filename, filter_ids)]
 
-###### A utility function to read a parallel corpus
+###### Utility functions to read a monolingual or parallel corpus
+def read_monolingual_corpus(trg_reader: InputReader, trg_file: str, batcher: batchers.Batcher=None, sample_sents=None,
+                            max_num_sents=None, max_trg_len=None):
+  """
+  A utility function to read a parallel corpus.
+
+  Args:
+    trg_reader (InputReader):
+    trg_file (str):
+    batcher (Batcher):
+    sample_sents (int): if not None, denote the number of sents that should be randomly chosen from all available sents.
+    max_num_sents (int): if not None, read only the first this many sents
+    max_trg_len (int): skip pair if trg side is too long
+
+  Returns:
+    A tuple of (trg_data, trg_batches) where ``trg_batches = trg_data`` if ``batcher=None``
+  """
+  trg_data = []
+  if sample_sents:
+    logger.info(f"Starting to read {sample_sents} monolingual sentences of {trg_file}")
+    trg_len = trg_reader.count_sents(trg_file)
+    if max_num_sents and max_num_sents < trg_len: trg_len = max_num_sents
+    filter_ids = np.random.choice(trg_len, sample_sents, replace=False)
+  else:
+    logger.info(f"Starting to read {trg_file}")
+    filter_ids = None
+    trg_len = 0, 0
+  trg_train_iterator = trg_reader.read_sents(trg_file, filter_ids)
+  for trg_sent in trg_train_iterator:
+    if trg_sent is None:
+      raise RuntimeError(f"training trg sentence was None!")
+    if max_num_sents and (max_num_sents <= len(trg_data)):
+      break
+    trg_len_ok = max_trg_len is None or trg_sent.sent_len() <= max_trg_len
+    if trg_len_ok:
+      trg_data.append(trg_sent)
+
+  logger.info(f"Done reading {trg_file}. Packing into batches.")
+
+  # Pack batches
+  if batcher is not None:
+    trg_batches = batcher.pack(trg_data)
+  else:
+    trg_batches = trg_data
+
+  logger.info(f"Done packing batches.")
+
+  return trg_data, trg_batches
+
+
 def read_parallel_corpus(src_reader: InputReader, trg_reader: InputReader, src_file: str, trg_file: str,
                          batcher: batchers.Batcher=None, sample_sents=None, max_num_sents=None, max_src_len=None, max_trg_len=None):
   """

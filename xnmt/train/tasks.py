@@ -91,6 +91,7 @@ class BaseTrainingTask(TrainingTask):
                max_num_train_sents: Optional[int] = None,
                name: Optional[str] = None) -> None:
     super().__init__(model=model)
+    self.batcher = batcher
     self.run_for_epochs = run_for_epochs
     self.training_state = TrainingState()
 
@@ -112,6 +113,7 @@ class BaseTrainingTask(TrainingTask):
     self.dev_loss_tracker = loss_trackers.DevLossTracker(self, dev_every, name)
 
     self.sample_train_sents = sample_train_sents
+    self.max_num_train_sents = max_num_train_sents
 
     self.name = name
 
@@ -385,7 +387,7 @@ class ConditionedTrainingTask(BaseTrainingTask, Serializable):
     Returns:
       Loss
     """
-    return self.loss_calculator.calc_loss(self.model, src, trg)
+    return self.loss_calculator.calc_loss(model=self.model, src=src, trg=trg)
 
 
 
@@ -431,7 +433,7 @@ class UnconditionedTrainingTask(BaseTrainingTask, Serializable):
                restart_trainer: bool = False,
                name: Optional[str] = None,
                sample_train_sents: Optional[int] = None,
-               max_num_train_sents: Optional[int] = None, max_src_len: Optional[int] = None,
+               max_num_train_sents: Optional[int] = None,
                max_trg_len: Optional[int] = None) -> None:
     super().__init__(model=model, batcher=batcher, run_for_epochs=run_for_epochs, loss_calculator=loss_calculator,
                      dev_every=dev_every, dev_tasks=dev_tasks, dev_combinator=dev_combinator, lr_decay=lr_decay,
@@ -439,30 +441,23 @@ class UnconditionedTrainingTask(BaseTrainingTask, Serializable):
                      restart_trainer=restart_trainer, sample_train_sents=sample_train_sents,
                      max_num_train_sents=max_num_train_sents, name=name)
     self.trg_file = trg_file
-    self.dev_combinator = dev_combinator
-
-    self.max_src_len = max_src_len
     self.max_trg_len = max_trg_len
 
   def _advance_epoch(self):
     """
     Shifts internal state to the next epoch, including data (re-)loading, batch re-packing and shuffling.
     """
-    if self.training_state.epoch_num==0 or self.sample_train_sents or \
-      self.model.src_reader.needs_reload() or self.model.trg_reader.needs_reload():
+    if self.training_state.epoch_num==0 or self.sample_train_sents or self.model.trg_reader.needs_reload():
       event_trigger.set_train(True)
-      self.src_data, self.trg_data, self.src_batches, self.trg_batches = \
-        input_readers.read_parallel_corpus(src_reader=self.model.src_reader, trg_reader=self.model.trg_reader,
-                                           src_file=self.src_file, trg_file=self.trg_file,
-                                           batcher=self.batcher, sample_sents=self.sample_train_sents,
-                                           max_num_sents=self.max_num_train_sents,
-                                           max_src_len=self.max_src_len, max_trg_len=self.max_trg_len)
-      self.model.src_reader.train = self.model.trg_reader.train = False
+      self.trg_data, self.trg_batches = \
+        input_readers.read_monolingual_corpus(trg_reader=self.model.trg_reader, trg_file=self.trg_file,
+                                              batcher=self.batcher, sample_sents=self.sample_train_sents,
+                                              max_num_sents=self.max_num_train_sents, max_trg_len=self.max_trg_len)
+      self.model.trg_reader.train = False
     self.training_state.epoch_seed = random.randint(1,2147483647)
     random.seed(self.training_state.epoch_seed)
     np.random.seed(self.training_state.epoch_seed)
-    self.src_batches, self.trg_batches = \
-      self.batcher.pack(self.src_data, self.trg_data)
+    self.trg_batches = self.batcher.pack(self.trg_data)
     self.training_state.epoch_num += 1
     self.training_state.steps_into_epoch = 0
     self.training_state.sents_into_epoch = 0
@@ -480,24 +475,22 @@ class UnconditionedTrainingTask(BaseTrainingTask, Serializable):
     while True:
       self._advance_epoch()
       for batch_num in self.minibatch_order:
-        src = self.src_batches[batch_num]
         trg = self.trg_batches[batch_num]
         self.training_state.steps_into_epoch += 1
-        self.training_state.sents_into_epoch += src.batch_size()
-        self.training_state.sents_since_start += src.batch_size()
-        yield src, trg
+        self.training_state.sents_into_epoch += trg.batch_size()
+        self.training_state.sents_since_start += trg.batch_size()
+        yield trg
 
-  def training_step(self, src, trg):
+  def training_step(self, trg):
     """
     Perform forward pass for the next training step and handle training logic (switching epoch, reshuffling, ..)
 
     Args:
-      src: src minibatch
       trg: trg minibatch
     Returns:
       Loss
     """
-    return self.loss_calculator.calc_loss(self.model, src, trg)
+    return self.loss_calculator.calc_loss(model=self.model, trg=trg)
 
 
 class TrainingState(object):
