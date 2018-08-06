@@ -76,7 +76,7 @@ class TrainingTask(object):
     raise NotImplementedError("must be implemented by subclasses")
 
 
-class SimpleTrainingTask(TrainingTask, Serializable):
+class ConditionedTrainingTask(TrainingTask, Serializable):
   """
   Args:
     model: a trainable supervised model
@@ -106,7 +106,7 @@ class SimpleTrainingTask(TrainingTask, Serializable):
     max_trg_len: Discard training sentences with target-side longer than this
     name: will be prepended to log outputs if given
   """
-  yaml_tag = '!SimpleTrainingTask'
+  yaml_tag = '!ConditionedTrainingTask'
 
   @serializable_init
   def __init__(self,
