@@ -39,7 +39,7 @@ class LossEvalTask(EvalTask, Serializable):
   yaml_tag = '!LossEvalTask'
 
   @serializable_init
-  def __init__(self, src_file: str, ref_file: Optional[str] = None, model: 'model_base.GeneratorModel' = Ref("model"),
+  def __init__(self, src_file: Optional[str] = None, ref_file: Optional[str] = None, model: 'model_base.GeneratorModel' = Ref("model"),
                batcher: Batcher = Ref("train.batcher", default=bare(xnmt.batchers.SrcBatcher, batch_size=32)),
                loss_calculator: LossCalculator = bare(MLELoss), max_src_len: Optional[int] = None,
                max_trg_len: Optional[int] = None,
@@ -111,7 +111,7 @@ class AccuracyEvalTask(EvalTask, reports.Reportable, Serializable):
 
   @serializable_init
   @events.register_xnmt_handler
-  def __init__(self, src_file: Union[str,Sequence[str]], ref_file: Union[str,Sequence[str]], hyp_file: str,
+  def __init__(self, ref_file: Union[str,Sequence[str]], hyp_file: str, src_file: Union[None, str,Sequence[str]]=None,
                model: 'model_base.GeneratorModel' = Ref("model"), eval_metrics: Union[str, Evaluator, Sequence[Evaluator]] = "bleu",
                inference: Optional['inferences.Inference'] = None, desc: Any = None):
     self.model = model

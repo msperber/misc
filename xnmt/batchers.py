@@ -254,7 +254,7 @@ class Batcher(object):
     else:
       return src_ret
 
-  def pack(self, src: Sequence[sent.Sentence], trg: Sequence[sent.Sentence]) \
+  def pack(self, src: Sequence[sent.Sentence], trg: Optional[Sequence[sent.Sentence]] = None) \
           -> Tuple[Sequence[Batch], Sequence[Batch]]:
     """
     Create a list of src/trg batches based on provided src/trg inputs.
@@ -282,7 +282,7 @@ class InOrderBatcher(Batcher, Serializable):
   def __init__(self, batch_size: int = 1, pad_src_to_multiple: int = 1) -> None:
     super().__init__(batch_size, pad_src_to_multiple=pad_src_to_multiple, sort_within_by_trg_len=False)
 
-  def pack(self, src: Sequence[sent.Sentence], trg: Optional[Sequence[sent.Sentence]]) \
+  def pack(self, src: Sequence[sent.Sentence], trg: Optional[Sequence[sent.Sentence]]=None) \
           -> Tuple[Sequence[Batch], Sequence[Batch]]:
     """
     Pack batches. Unlike other batches, the trg sentences are optional.
@@ -313,7 +313,7 @@ class ShuffleBatcher(Batcher):
     super().__init__(batch_size=batch_size, granularity=granularity, pad_src_to_multiple=pad_src_to_multiple,
                      sort_within_by_trg_len=True)
 
-  def pack(self, src, trg):
+  def pack(self, src, trg=None):
     order = list(range(len(src)))
     np.random.shuffle(order)
     return self._pack_by_order(src, trg, order)
@@ -342,7 +342,7 @@ class SortBatcher(Batcher):
     self.sort_key = sort_key
     self.break_ties_randomly = break_ties_randomly
 
-  def pack(self, src, trg):
+  def pack(self, src, trg=None):
     if self.break_ties_randomly:
       order = np.argsort([self.sort_key(x) + random.uniform(-SortBatcher.__tiebreaker_eps, SortBatcher.__tiebreaker_eps) for x in zip(src,trg)])
     else:
