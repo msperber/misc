@@ -5,7 +5,6 @@ import itertools
 from collections import namedtuple
 from typing import Any, Sequence, Union, List
 
-from xnmt import search_strategies
 from xnmt.settings import settings
 from xnmt.modelparts.attenders import Attender, MlpAttender
 from xnmt import batchers, event_trigger
@@ -14,7 +13,7 @@ from xnmt.modelparts.embedders import Embedder, SimpleWordEmbedder
 from xnmt.events import register_xnmt_handler
 from xnmt import inferences, input_readers
 from xnmt.models import base
-from xnmt import sent
+from xnmt import search_strategies, sent
 from xnmt.losses import FactoredLossExpr
 from xnmt.transducers.recurrent import BiLSTMSeqTransducer
 from xnmt.persistence import serializable_init, Serializable, bare

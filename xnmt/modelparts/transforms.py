@@ -1,3 +1,4 @@
+from typing import Optional, Sequence
 import numbers
 from typing import Optional, Sequence
 
