@@ -554,3 +554,71 @@ class OOVStatisticsReporter(Reporter, Serializable):
       fout.write(f"\n\nfantasized words: \n")
       fout.write("\n".join([f"{item[0]} ({item[1]})" for item in sorted_hyp_oovs_unmatched]))
 
+
+
+class SymmetricReporter(AttentionReporter, Serializable):
+  """
+  HTML Reporter that prints attention matrices and other info from the symmetric translator.
+
+  Args:
+    report_path: Prefix for path to write HTML and image files to
+  """
+
+  yaml_tag = "!SymmetricReporter"
+
+  @register_xnmt_handler
+  @serializable_init
+  def __init__(self, report_path: str = settings.DEFAULT_REPORT_PATH):
+    super().__init__(report_name="symmetric", report_path=report_path)
+
+  def create_report(self,
+                    src: sent.Sentence,
+                    output: sent.ReadableSentence,
+                    ref_file: str,
+                    attentions: np.ndarray,
+                    symm_att: np.ndarray,
+                    symm_out: Optional[sent.ReadableSentence],
+                    symm_ref: Optional[sent.ReadableSentence],
+                    **kwargs) -> None:
+    """
+    Create report.
+
+    Args:
+      src: source-side input
+      output: generated output
+      ref_file: path to reference
+      attentions: attention matrices
+      symm_att:
+      symm_out:
+      symm_ref:
+      **kwargs: arguments to be ignored
+    """
+
+    idx = output.idx
+    reference = utils.cached_file_lines(ref_file)[output.idx]
+    self.add_sent_heading(idx)
+    src_tokens = src.str_tokens() if isinstance(src, sent.ReadableSentence) else []
+    trg_tokens = output.str_tokens()
+    src_str = src.sent_str() if isinstance(src, sent.ReadableSentence) else ""
+    trg_str = output.sent_str()
+    symm_ref_str = symm_ref.sent_str()
+    stage_1_output_str = symm_out.sent_str()
+    self.add_charcut_diff(trg_str, reference, ref_label="Ref translation:", mt_label="Sys translation:")
+    self.add_fields_if_set({"Source": src_str})
+    if symm_ref_str:
+      self.add_charcut_diff(trg_str=stage_1_output_str, reference=symm_ref_str, ref_label="Ref transcript",
+                            mt_label="Stage 1 (ASR) output")
+    else:
+      self.add_fields_if_set({"Stage 1 (ASR) output": stage_1_output_str})
+    self.add_atts(attentions=symm_att,
+                  src_tokens=src.get_array() if isinstance(src, sent.ArraySentence) else src_tokens,
+                  trg_tokens=symm_out.str_tokens(), idx=idx, desc="Stage 1 (ASR) Attention")
+    self.add_atts(attentions=attentions,
+                  src_tokens=[''] + symm_out.str_tokens(), trg_tokens=trg_tokens,
+                  idx=idx, desc="Output Translation Attention")
+    self.finish_sent()
+
+  def conclude_report(self):
+    self.finish_html_doc()
+    self.write_html()
+
