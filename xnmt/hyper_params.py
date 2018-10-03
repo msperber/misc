@@ -19,7 +19,7 @@ class Scalar(Serializable):
 
   @serializable_init
   @register_xnmt_handler
-  def __init__(self, initial=0.0, times_updated=0):
+  def __init__(self, initial:numbers.Integral = 0.0, times_updated:numbers.Integral = 0):
     self.initial = initial
     self.times_updated = times_updated
     self.value = self.get_curr_value()
@@ -93,6 +93,5 @@ class DefinedSequence(Scalar, Serializable):
 
   def get_curr_value(self):
     return self.sequence[min(len(self.sequence) - 1, self.times_updated)]
-
 
 numbers.Real.register(Scalar)
