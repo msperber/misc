@@ -571,7 +571,7 @@ class SymmetricReporter(AttentionReporter, Serializable):
   def __init__(self, report_path: str = settings.DEFAULT_REPORT_PATH):
     super().__init__(report_name="symmetric", report_path=report_path)
 
-  def create_report(self,
+  def create_sent_report(self,
                     src: sent.Sentence,
                     output: sent.ReadableSentence,
                     ref_file: str,
