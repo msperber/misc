@@ -56,6 +56,8 @@ class SymmetricTranslator(models.ConditionedModel, models.GeneratorModel, Serial
     split_dual_proj: automatically set
     split_context_transform: run split context through transform before feeding back into RNN
     sampling_prob: for teacher or split mode, probability of sampling from model rather than using teacher forcing
+    transduce_oracle: if ``True``, the ``transduce`` method will always behave as in training mode, even when decoding.
+                      This essentially means that we force-decode the true output here.
     compute_report:
   """
   yaml_tag = "!SymmetricTranslator"
@@ -86,6 +88,7 @@ class SymmetricTranslator(models.ConditionedModel, models.GeneratorModel, Serial
                split_dual_proj: Optional[transforms.Linear] = None,
                split_context_transform: Optional[transforms.Transform]= None,
                sampling_prob: numbers.Number = 0.0,
+               transduce_oracle: bool = False,
                compute_report: bool = Ref("exp_global.compute_report", default=False)):
     super().__init__(src_reader=src_reader, trg_reader=trg_reader)
     assert mode is None or (mode_translate is None and mode_transduce is None), \
@@ -122,6 +125,7 @@ class SymmetricTranslator(models.ConditionedModel, models.GeneratorModel, Serial
                                                              lambda: transforms.Linear(input_dim=self.dec_lstm.input_dim*2,
                                                                                            output_dim=self.dec_lstm.input_dim))
     self.sampling_prob = sampling_prob
+    self.transduce_oracle = transduce_oracle
     self.compute_report = compute_report
 
   def shared_params(self):
@@ -175,13 +179,16 @@ class SymmetricTranslator(models.ConditionedModel, models.GeneratorModel, Serial
     atts_list = []
     generated_word_ids = []
     for pos in range(max_dec_len):
-      if self.train and self.mode_transduce in ["teacher", "split"]:
+      if (self.train or self.transduce_oracle) and self.mode_transduce in ["teacher", "split"]:
         # unroll RNN guided by reference
         prev_ref_action, ref_action = None, None
         if pos > 0:
           prev_ref_action = self._batch_ref_action(pos-1)
         if self.transducer_loss:
           ref_action = self._batch_ref_action(pos)
+        if not self.train and self.transduce_oracle:
+          assert batch_size==1
+          generated_word_ids.append((ref_action or self._batch_ref_action(pos))[0]) # for reporting purposes
         step_loss = self.calc_loss_one_step(dec_state=current_state,
                                             batch_size=batch_size,
                                             mode=self.mode_transduce,
