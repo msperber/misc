@@ -15,7 +15,7 @@ lattice: !Experiment
     src_embedder: !LatticeEmbedder {}
     encoder: !ModularSeqTransducer
       modules:
-      - !PositionalSeqTransducer
+      - !LatticePositionalSeqTransducer
         input_dim: 512
         max_pos: 100
       - !ModularSeqTransducer
