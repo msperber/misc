@@ -25,6 +25,7 @@ symmetric: !Experiment
       vocab: !Ref { path: model.trg_reader.vocab }
     encoder: !SymmetricTranslator
       mode: split
+      attender: !MlpLocationAttender {}
       dropout_dec_state: 0.5
       split_dual: [0.0, 0.5]
       split_context_transform: !MLP {}
