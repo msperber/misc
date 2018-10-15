@@ -25,7 +25,7 @@ lattice: !Experiment
             modules:
             - !ResidualSeqTransducer
               input_dim: 512
-              child: !MultiHeadAttentionSeqTransducer
+              child: !MultiHeadAttentionLatticeTransducer
                 num_heads: 8
               layer_norm: True
             - !ResidualSeqTransducer
