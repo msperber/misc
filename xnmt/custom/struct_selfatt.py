@@ -14,6 +14,7 @@ class LatticePositionalSeqTransducer(transducers.SeqTransducer, Serializable):
   yaml_tag = '!LatticePositionalSeqTransducer'
 
   @serializable_init
+  @events.register_xnmt_handler
   def __init__(self,
                max_pos: numbers.Integral,
                op: str = 'sum',
@@ -39,18 +40,21 @@ class LatticePositionalSeqTransducer(transducers.SeqTransducer, Serializable):
   def get_final_states(self) -> List[transducers.FinalTransducerState]:
     return self._final_states
 
+  @events.handle_xnmt_event
+  def on_start_sent(self, src):
+    self.cur_src = src[0]
+
   def transduce(self, src: expression_seqs.ExpressionSequence) -> expression_seqs.ExpressionSequence:
-    num_nodes = src.sent_len()
+    num_nodes = len(src)
 
     # TODO: should we cache these?
     adj_matrix = np.full((num_nodes, num_nodes), -np.inf)
-    for node_i, node in enumerate(src.nodes):
+    for node_i, node in enumerate(self.cur_src.nodes):
       for next_node in node.nodes_next:
         adj_matrix[node_i,next_node] = -1
     # computing longest paths
     dist_from_start = scipy.sparse.csgraph.dijkstra(csgraph=adj_matrix,
-                                                    indices=[0],
-                                                    unweighted=True)
+                                                    indices=[0])
 
     embeddings = dy.select_cols(dy.parameter(self.embedder), [int(-d) for d in dist_from_start[0]])
 
