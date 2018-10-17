@@ -187,14 +187,14 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
 
     ret = np.maximum(pairwise_fwd, pairwise_bwd)
 
-    # for node_i in range(lattice.sent_len()):
-    #   lattice.nodes[node_i].cond_log_prob = ret[annotate][node_i]
+    for node_i in range(lattice.sent_len()):
+      lattice.nodes[node_i].cond_log_prob = ret[annotate][node_i]
 
     return ret
 
 
   def compute_log_conditionals_one(self, lattice: sent.Lattice, condition_on: numbers.Integral,
-                                   log_zero: numbers.Integral = -300.0) -> List[numbers.Real]:
+                                   log_zero: numbers.Integral = -100.0) -> List[numbers.Real]:
     """
     Compute conditional log probabilities for every node being visited after a given node has been visited.
 

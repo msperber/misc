@@ -1,7 +1,7 @@
+import copy
 import functools
 import math
 import numbers
-import subprocess
 from typing import List, Optional, Sequence, Union
 
 import numpy as np
@@ -409,13 +409,13 @@ class Lattice(ReadableSentence):
     """
     if pad_len == 0:
       return self
-    padded = Lattice(idx=self.idx, nodes=list(self.nodes), vocab=self.vocab)
+    padded_nodes = copy.deepcopy(self.nodes)
     for _ in range(pad_len):
-      padded.nodes[-1].nodes_next.append(len(padded.nodes))
-      padded.nodes.append(LatticeNode(nodes_prev=[len(padded.nodes)-1], nodes_next=[], value=self.vocab.ES,
+      padded_nodes[-1].nodes_next.append(len(padded_nodes))
+      padded_nodes.append(LatticeNode(nodes_prev=[len(padded_nodes)-1], nodes_next=[], value=self.vocab.ES,
                                       fwd_log_prob=float("-inf"), marginal_log_prob=float("-inf"),
                                       bwd_log_prob=float("-inf")))
-    return padded
+    return Lattice(idx=self.idx, nodes=padded_nodes, vocab=self.vocab)
 
   def create_truncated_sent(self, trunc_len: numbers.Integral) -> 'Lattice':
     """
