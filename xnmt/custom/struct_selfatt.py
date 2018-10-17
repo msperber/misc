@@ -105,8 +105,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
 
   @events.handle_xnmt_event
   def on_start_sent(self, src):
-    self.cur_src = src[0]
-    self.compute_pairwise_log_conditionals(self.cur_src, annotate=0)
+    self.cur_src = src[0] # TODO: support minibatches
     self._final_states = None
 
   def get_final_states(self) -> List[transducers.FinalTransducerState]:
@@ -141,11 +140,11 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     # Split to batches [(length, head_dim) x batch * num_heads] tensor
     q, k, v = [dy.reshape(x, (x_len, self.head_dim), batch_size=x_batch * self.num_heads) for x in (q, k, v)]
 
-    pairwise_cond = self.compute_pairwise_log_conditionals()
+    pairwise_cond = self.compute_pairwise_log_conditionals(self.cur_src)
 
     # Do scaled dot product [(length, length) x batch * num_heads], rows are queries, columns are keys
     attn_score = q * dy.transpose(k) / math.sqrt(self.head_dim)
-    attn_score += dy.inputTensor(pairwise_cond) # TODO: rows/cols correct
+    attn_score += dy.inputTensor(pairwise_cond)
     if expr_seq.mask is not None:
       mask = dy.inputTensor(np.repeat(expr_seq.mask.np_arr, self.num_heads, axis=0).transpose(), batched=True) * -1e10
       attn_score = attn_score + mask
@@ -194,7 +193,8 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     return ret
 
 
-  def compute_log_conditionals_one(self, lattice: sent.Lattice, condition_on: numbers.Integral) -> List[numbers.Real]:
+  def compute_log_conditionals_one(self, lattice: sent.Lattice, condition_on: numbers.Integral,
+                                   log_zero: numbers.Integral = -300.0) -> List[numbers.Real]:
     """
     Compute conditional log probabilities for every node being visited after a given node has been visited.
 
@@ -205,16 +205,17 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     Args:
       lattice: The lattice
       condition_on: index of node that must be traversed
+      log_zero: negative number that approximates the log of zero (-inf cannot be passed to DyNet)
 
     Returns:
       List of log conditionals with same node ordering as for input lattice.
     """
-    cond_log_probs = [float("-inf")] * lattice.sent_len()
+    cond_log_probs = [log_zero] * lattice.sent_len()
     cond_log_probs[condition_on] = 0.0
     for node_i in range(lattice.sent_len()): # nodes are in topological order so we can simply loop in order
       node = lattice.nodes[node_i]
       for next_node in node.nodes_next:
         next_log_prob = lattice.nodes[next_node].fwd_log_prob
         next_cond_prob = math.exp(cond_log_probs[next_node]) + math.exp(next_log_prob) * math.exp(cond_log_probs[node_i])
-        cond_log_probs[next_node] = math.log(next_cond_prob) if next_cond_prob>0.0 else float("-inf")
+        cond_log_probs[next_node] = math.log(next_cond_prob) if next_cond_prob>0.0 else log_zero
     return cond_log_probs
