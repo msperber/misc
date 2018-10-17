@@ -101,6 +101,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
   @events.handle_xnmt_event
   def on_start_sent(self, src):
     self.cur_src = src[0]
+    self.cur_src.cond_log_probs(2)
     self._final_states = None
 
   def get_final_states(self) -> List[transducers.FinalTransducerState]:

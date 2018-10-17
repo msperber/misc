@@ -483,3 +483,14 @@ class Lattice(ReadableSentence):
           dot.render(out_file)
       except RuntimeError:
           pass
+
+  def cond_log_probs(self, condition_on: numbers.Integral) -> List[numbers.Real]:
+    cond_log_probs = [float("-inf")] * self.sent_len()
+    cond_log_probs[condition_on] = 0.0
+    for node_i in range(self.sent_len()): # nodes are in topological order so we can simply loop in order
+      node = self.nodes[node_i]
+      for next_node in node.nodes_next:
+        next_log_prob = self.nodes[next_node].fwd_log_prob
+        next_cond_prob = math.exp(cond_log_probs[next_node]) + math.exp(next_log_prob) * math.exp(cond_log_probs[node_i])
+        cond_log_probs[next_node] = math.log(next_cond_prob) if next_cond_prob>0.0 else float("-inf")
+    return cond_log_probs
