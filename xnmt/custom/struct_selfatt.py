@@ -187,8 +187,8 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
 
     ret = np.maximum(pairwise_fwd, pairwise_bwd)
 
-    for node_i in range(lattice.sent_len()):
-      lattice.nodes[node_i].cond_log_prob = ret[annotate][node_i]
+    # for node_i in range(lattice.sent_len()):
+    #   lattice.nodes[node_i].cond_log_prob = ret[annotate][node_i]
 
     return ret
 

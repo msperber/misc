@@ -401,16 +401,23 @@ class Lattice(ReadableSentence):
 
   def create_padded_sent(self, pad_len: numbers.Integral) -> 'Lattice':
     """
-    Return self, as padding is not supported.
+    Return padded lattice by connecting </s> nodes with 0 transition prob
 
     Args:
-      pad_len: Number of tokens to pad, must be 0.
+      pad_len: Number of tokens to pad.
 
     Returns:
       self.
     """
-    if pad_len != 0: raise ValueError("Lattices cannot be padded.")
-    return self
+    if pad_len == 0:
+      return self
+    padded = Lattice(idx=self.idx, nodes=list(self.nodes), vocab=self.vocab)
+    for _ in range(pad_len):
+      padded.nodes[-1].nodes_next.append(len(padded.nodes))
+      padded.nodes.append(LatticeNode(nodes_prev=[len(padded.nodes)-1], nodes_next=[], value=self.vocab.ES,
+                                      fwd_log_prob=float("-inf"), marginal_log_prob=float("-inf"),
+                                      bwd_log_prob=float("-inf")))
+    return padded
 
   def create_truncated_sent(self, trunc_len: numbers.Integral) -> 'Lattice':
     """
