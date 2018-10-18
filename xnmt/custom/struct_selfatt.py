@@ -126,7 +126,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
 
   @events.handle_xnmt_event
   def on_start_sent(self, src):
-    self.cur_src = src[0] # TODO: support minibatches
+    self.cur_src = src
     self._final_states = None
 
   def get_final_states(self) -> List[transducers.FinalTransducerState]:
@@ -161,11 +161,16 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     # Split to batches [(length, head_dim) x batch * num_heads] tensor
     q, k, v = [dy.reshape(x, (x_len, self.head_dim), batch_size=x_batch * self.num_heads) for x in (q, k, v)]
 
-    pairwise_cond = self.compute_pairwise_log_conditionals(self.cur_src)
-    raise NotImplementedError("need to support masking w/ minibatches")
+    pairwise_cond = []
+    for lattice_batch_elem in self.cur_src:
+      cur_expr = dy.inputTensor(self.compute_pairwise_log_conditionals(lattice_batch_elem))
+      for _ in range(self.num_heads):
+        pairwise_cond.append(cur_expr)
+    pairwise_cond = dy.concatenate_to_batch(pairwise_cond)
+
     # Do scaled dot product [(length, length) x batch * num_heads], rows are queries, columns are keys
     attn_score = q * dy.transpose(k) / math.sqrt(self.head_dim)
-    attn_score += dy.inputTensor(pairwise_cond)
+    attn_score += pairwise_cond
     if expr_seq.mask is not None:
       mask = dy.inputTensor(np.repeat(expr_seq.mask.np_arr, self.num_heads, axis=0).transpose(), batched=True) * LOG_ZERO
       attn_score = attn_score + mask
