@@ -27,6 +27,7 @@ lattice: !Experiment
               input_dim: 512
               child: !MultiHeadAttentionLatticeTransducer
                 num_heads: 8
+                probabilistic_masks: False
               layer_norm: True
             - !ResidualSeqTransducer
               input_dim: 512

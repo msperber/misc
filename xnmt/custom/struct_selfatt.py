@@ -246,7 +246,12 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     for node_i in range(lattice.len_unpadded()): # nodes are in topological order so we can simply loop in order
       node = lattice.nodes[node_i]
       for next_node in node.nodes_next:
-        next_log_prob = lattice.nodes[next_node].fwd_log_prob
-        next_cond_prob = math.exp(cond_log_probs[next_node]) + math.exp(next_log_prob) * math.exp(cond_log_probs[node_i])
-        cond_log_probs[next_node] = math.log(next_cond_prob) if next_cond_prob>0.0 else LOG_ZERO
+        if self.probabilistic_masks:
+          next_log_prob = lattice.nodes[next_node].fwd_log_prob
+          next_cond_prob = math.exp(cond_log_probs[next_node]) + math.exp(next_log_prob) * math.exp(cond_log_probs[node_i])
+          cond_log_probs[next_node] = math.log(next_cond_prob) if next_cond_prob>0.0 else LOG_ZERO
+        else:
+          next_log_prob = 0.0
+          next_cond_prob = max(math.exp(cond_log_probs[next_node]), math.exp(next_log_prob) * math.exp(cond_log_probs[node_i]))
+          cond_log_probs[next_node] = math.log(next_cond_prob) if next_cond_prob > 0.0 else LOG_ZERO
     return cond_log_probs
