@@ -353,10 +353,11 @@ class Lattice(ReadableSentence):
     idx: running sentence number (0-based; unique among sentences loaded from the same file, but not across files)
     nodes: list of lattice nodes
     vocab: vocabulary for word IDs
+    num_padded: denoting that this many words are padded (without adding any physical nodes)
   """
 
   def __init__(self, idx: Optional[numbers.Integral], nodes: Sequence[LatticeNode], vocab: Vocab,
-               num_padded: numbers.Integral=0) -> None:
+               num_padded: numbers.Integral = 0) -> None:
     self.idx = idx
     self.nodes = nodes
     self.vocab = vocab
@@ -367,9 +368,8 @@ class Lattice(ReadableSentence):
       assert len(nodes[t].nodes_next) > 0
     self.num_padded = num_padded
 
-
   def sent_len(self) -> int:
-    """Return number of nodes in the lattice.
+    """Return number of nodes in the lattice, including padded words.
 
     Return:
       Number of nodes in lattice.
@@ -377,7 +377,7 @@ class Lattice(ReadableSentence):
     return len(self.nodes) + self.num_padded
 
   def len_unpadded(self) -> int:
-    """Return number of nodes in the lattice (padding is not supported with lattices).
+    """Return number of nodes in the lattice, without counting padded words.
 
     Returns:
       Number of nodes in lattice.
@@ -386,7 +386,7 @@ class Lattice(ReadableSentence):
 
   def __getitem__(self, key: numbers.Integral) -> Optional[int]:
     """
-    Return the value of a particular lattice node.
+    Return the value of a particular lattice node. Padded nodes are virtually appended at the end.
 
     Args:
       key: Index of lattice node.
@@ -404,25 +404,17 @@ class Lattice(ReadableSentence):
 
   def create_padded_sent(self, pad_len: numbers.Integral) -> 'Lattice':
     """
-    Return padded lattice by connecting </s> nodes with 0 transition prob
+    Return padded lattice.
 
     Args:
       pad_len: Number of tokens to pad.
 
     Returns:
-      self.
+      New padded lattice, or self if pad_len==0.
     """
     if pad_len == 0:
       return self
     copied_nodes = copy.deepcopy(self.nodes)
-    # for _ in range(pad_len):
-    #   # padded_nodes[-1].nodes_next.append(len(padded_nodes))
-    #   # padded_nodes.append(LatticeNode(nodes_prev=[len(padded_nodes)-1], nodes_next=[], value=self.vocab.ES,
-    #   #                                 fwd_log_prob=float("-inf"), marginal_log_prob=float("-inf"),
-    #   #                                 bwd_log_prob=float("-inf")))
-    #   padded_nodes.append(LatticeNode(nodes_prev=[], nodes_next=[], value=self.vocab.ES,
-    #                                   fwd_log_prob=None, marginal_log_prob=None,
-    #                                   bwd_log_prob=float("-inf")))
     return Lattice(idx=self.idx, nodes=copied_nodes, vocab=self.vocab, num_padded=pad_len)
 
   def create_truncated_sent(self, trunc_len: numbers.Integral) -> 'Lattice':
@@ -443,6 +435,7 @@ class Lattice(ReadableSentence):
     Create a lattice with reversed direction.
 
     The new lattice will have lattice nodes in reversed order and switched successors/predecessors.
+    It will have the same number of padded nodes (again at the end of the nodes!).
 
     Returns:
       Reversed lattice.
@@ -457,7 +450,7 @@ class Lattice(ReadableSentence):
                              marginal_log_prob=node.marginal_log_prob,
                              bwd_log_prob=node.bwd_log_prob)
       rev_nodes.append(new_node)
-    return Lattice(idx=self.idx, nodes=rev_nodes, vocab=self.vocab, num_padded=self.sent_len()-self.len_unpadded())
+    return Lattice(idx=self.idx, nodes=rev_nodes, vocab=self.vocab, num_padded=self.num_padded)
 
   def str_tokens(self, **kwargs) -> List[str]:
     """
