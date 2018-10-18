@@ -162,7 +162,6 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     q, k, v = [dy.reshape(x, (x_len, self.head_dim), batch_size=x_batch * self.num_heads) for x in (q, k, v)]
 
     pairwise_cond = self.compute_pairwise_log_conditionals(self.cur_src)
-    raise NotImplementedError("there seems to be a bug with the computation of backward scores in the prepro script")
     raise NotImplementedError("need to support masking w/ minibatches")
     # Do scaled dot product [(length, length) x batch * num_heads], rows are queries, columns are keys
     attn_score = q * dy.transpose(k) / math.sqrt(self.head_dim)
@@ -213,8 +212,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
         pairwise.append([LOG_ZERO] * lattice.sent_len())
     pairwise_bwd = np.asarray(pairwise)
 
-    # ret = np.maximum(pairwise_fwd, pairwise_bwd)
-    ret = pairwise_bwd
+    ret = np.maximum(pairwise_fwd, pairwise_bwd)
 
     for node_i in range(lattice.len_unpadded()):
       lattice.nodes[node_i].cond_log_prob = ret[annotate][node_i]

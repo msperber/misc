@@ -3,7 +3,7 @@ lattice: !Experiment
     default_layer_dim: 512
     dropout: 0.3
   preproc: !PreprocRunner
-    overwrite: False
+    overwrite: True
     tasks:
     - !PreprocExtract
       in_files:
