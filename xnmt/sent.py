@@ -355,7 +355,8 @@ class Lattice(ReadableSentence):
     vocab: vocabulary for word IDs
   """
 
-  def __init__(self, idx: Optional[numbers.Integral], nodes: Sequence[LatticeNode], vocab: Vocab) -> None:
+  def __init__(self, idx: Optional[numbers.Integral], nodes: Sequence[LatticeNode], vocab: Vocab,
+               num_padded: numbers.Integral=0) -> None:
     self.idx = idx
     self.nodes = nodes
     self.vocab = vocab
@@ -364,6 +365,8 @@ class Lattice(ReadableSentence):
     for t in range(1, len(nodes) - 1):
       assert len(nodes[t].nodes_prev) > 0
       assert len(nodes[t].nodes_next) > 0
+    self.num_padded = num_padded
+
 
   def sent_len(self) -> int:
     """Return number of nodes in the lattice.
@@ -371,7 +374,7 @@ class Lattice(ReadableSentence):
     Return:
       Number of nodes in lattice.
     """
-    return len(self.nodes)
+    return len(self.nodes) + self.num_padded
 
   def len_unpadded(self) -> int:
     """Return number of nodes in the lattice (padding is not supported with lattices).
@@ -379,9 +382,9 @@ class Lattice(ReadableSentence):
     Returns:
       Number of nodes in lattice.
     """
-    return self.sent_len()
+    return len(self.nodes)
 
-  def __getitem__(self, key: numbers.Integral) -> int:
+  def __getitem__(self, key: numbers.Integral) -> Optional[int]:
     """
     Return the value of a particular lattice node.
 
@@ -389,8 +392,10 @@ class Lattice(ReadableSentence):
       key: Index of lattice node.
 
     Returns:
-      Value of lattice node with given index.
+      Value of lattice node with given index, or ES if accessing a padded lattice node.
     """
+    if self.len_unpadded() <= key < self.sent_len():
+      return self.vocab.ES
     node = self.nodes[key]
     if isinstance(node, list):
       # no guarantee that slice is still a consistent graph
@@ -409,13 +414,16 @@ class Lattice(ReadableSentence):
     """
     if pad_len == 0:
       return self
-    padded_nodes = copy.deepcopy(self.nodes)
-    for _ in range(pad_len):
-      padded_nodes[-1].nodes_next.append(len(padded_nodes))
-      padded_nodes.append(LatticeNode(nodes_prev=[len(padded_nodes)-1], nodes_next=[], value=self.vocab.ES,
-                                      fwd_log_prob=float("-inf"), marginal_log_prob=float("-inf"),
-                                      bwd_log_prob=float("-inf")))
-    return Lattice(idx=self.idx, nodes=padded_nodes, vocab=self.vocab)
+    copied_nodes = copy.deepcopy(self.nodes)
+    # for _ in range(pad_len):
+    #   # padded_nodes[-1].nodes_next.append(len(padded_nodes))
+    #   # padded_nodes.append(LatticeNode(nodes_prev=[len(padded_nodes)-1], nodes_next=[], value=self.vocab.ES,
+    #   #                                 fwd_log_prob=float("-inf"), marginal_log_prob=float("-inf"),
+    #   #                                 bwd_log_prob=float("-inf")))
+    #   padded_nodes.append(LatticeNode(nodes_prev=[], nodes_next=[], value=self.vocab.ES,
+    #                                   fwd_log_prob=None, marginal_log_prob=None,
+    #                                   bwd_log_prob=float("-inf")))
+    return Lattice(idx=self.idx, nodes=copied_nodes, vocab=self.vocab, num_padded=pad_len)
 
   def create_truncated_sent(self, trunc_len: numbers.Integral) -> 'Lattice':
     """
@@ -441,7 +449,7 @@ class Lattice(ReadableSentence):
     """
     rev_nodes = []
     seq_len = len(self.nodes)
-    for node in reversed(self.nodes):
+    for node in reversed(self.nodes[:self.len_unpadded()]):
       new_node = LatticeNode(nodes_prev=[seq_len - n - 1 for n in node.nodes_next],
                              nodes_next=[seq_len - p - 1 for p in node.nodes_prev],
                              value=node.value,
@@ -449,7 +457,7 @@ class Lattice(ReadableSentence):
                              marginal_log_prob=node.marginal_log_prob,
                              bwd_log_prob=node.bwd_log_prob)
       rev_nodes.append(new_node)
-    return Lattice(idx=self.idx, nodes=rev_nodes, vocab=self.vocab)
+    return Lattice(idx=self.idx, nodes=rev_nodes, vocab=self.vocab, num_padded=self.sent_len()-self.len_unpadded())
 
   def str_tokens(self, **kwargs) -> List[str]:
     """

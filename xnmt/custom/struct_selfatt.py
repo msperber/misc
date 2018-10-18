@@ -11,6 +11,8 @@ from xnmt import expression_seqs, events, param_collections, param_initializers,
 from xnmt.transducers import base as transducers
 from xnmt.persistence import bare, Ref, Serializable, serializable_init
 
+LOG_ZERO = -1e10 # can't pass -infinity to DyNet
+
 class LatticePositionalSeqTransducer(transducers.SeqTransducer, Serializable):
   yaml_tag = '!LatticePositionalSeqTransducer'
 
@@ -43,13 +45,15 @@ class LatticePositionalSeqTransducer(transducers.SeqTransducer, Serializable):
 
   @events.handle_xnmt_event
   def on_start_sent(self, src):
-    self.cur_src = src[0] # TODO: support minibatches
+    self.cur_src = src
 
   def transduce(self, src: expression_seqs.ExpressionSequence) -> expression_seqs.ExpressionSequence:
 
-    dist_from_start = self.longest_distances(self.cur_src)
-
-    embeddings = dy.select_cols(dy.parameter(self.embedder), [int(-d) for d in dist_from_start[0]])
+    embeddings = []
+    for lattice_batch_elem in self.cur_src:
+      dist_from_start = self.longest_distances(lattice_batch_elem)
+      embeddings.append(dy.select_cols(dy.parameter(self.embedder), dist_from_start))
+    embeddings = dy.concatenate_to_batch(embeddings)
 
     if self.op == 'sum':
       output = embeddings + src.as_tensor()
@@ -62,15 +66,29 @@ class LatticePositionalSeqTransducer(transducers.SeqTransducer, Serializable):
     return output_seq
 
   @functools.lru_cache(maxsize=None)
-  def longest_distances(self, lattice):
-    num_nodes = lattice.sent_len()
+  def longest_distances(self, lattice: sent.Lattice) -> List[int]:
+    """
+    Compute the longest distance to the start node for every node in the lattice.
+
+    For padded nodes, the distance will be set to the highest value among unpadded elements
+
+    Args:
+      lattice: A possibly padded lattice. Padded elements have to appear at the end of the node list.
+
+    Returns:
+      List of longest distances.
+    """
+    num_nodes = lattice.len_unpadded()
     adj_matrix = np.full((num_nodes, num_nodes), -np.inf)
-    for node_i, node in enumerate(lattice.nodes):
+    for node_i in range(lattice.len_unpadded()):
+      node = lattice.nodes[node_i]
       for next_node in node.nodes_next:
         adj_matrix[node_i, next_node] = -1
     # computing longest paths
     dist_from_start = scipy.sparse.csgraph.dijkstra(csgraph=adj_matrix,
                                                     indices=[0])
+    max_pos = int(-np.min(dist_from_start))
+    dist_from_start = [int(-d) for d in dist_from_start[0]] + [max_pos] * (lattice.sent_len()-lattice.len_unpadded())
     return dist_from_start
 
 
@@ -87,7 +105,8 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
                input_dim=Ref("exp_global.default_layer_dim"),
                param_init=Ref("exp_global.param_init", default=bare(param_initializers.GlorotInitializer)),
                bias_init=Ref("exp_global.bias_init", default=bare(param_initializers.ZeroInitializer)),
-               num_heads=8):
+               num_heads=8,
+               probabilistic_masks=True):
     assert (input_dim % num_heads == 0)
 
     param_collection = param_collections.ParamManager.my_params(self)
@@ -102,6 +121,8 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     self.pbq, self.pbk, self.pbv, self.pbo = [
       param_collection.add_parameters(dim=(1, input_dim), init=bias_init.initializer((1, input_dim,))) for _ in
       range(4)]
+
+    self.probabilistic_masks = probabilistic_masks
 
   @events.handle_xnmt_event
   def on_start_sent(self, src):
@@ -141,12 +162,13 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     q, k, v = [dy.reshape(x, (x_len, self.head_dim), batch_size=x_batch * self.num_heads) for x in (q, k, v)]
 
     pairwise_cond = self.compute_pairwise_log_conditionals(self.cur_src)
-
+    raise NotImplementedError("there seems to be a bug with the computation of backward scores in the prepro script")
+    raise NotImplementedError("need to support masking w/ minibatches")
     # Do scaled dot product [(length, length) x batch * num_heads], rows are queries, columns are keys
     attn_score = q * dy.transpose(k) / math.sqrt(self.head_dim)
     attn_score += dy.inputTensor(pairwise_cond)
     if expr_seq.mask is not None:
-      mask = dy.inputTensor(np.repeat(expr_seq.mask.np_arr, self.num_heads, axis=0).transpose(), batched=True) * -1e10
+      mask = dy.inputTensor(np.repeat(expr_seq.mask.np_arr, self.num_heads, axis=0).transpose(), batched=True) * LOG_ZERO
       attn_score = attn_score + mask
     attn_prob = dy.softmax(attn_score, d=1)
     # Reduce using attention and resize to match [(length, model_size) x batch]
@@ -165,7 +187,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     """
     Compute pairwise log conditionals.
 
-    For row i and column j, the result is log(Pr(j in path | i in path))
+    For row i and column j, the result is log(Pr(j in path | i in path)).
 
     Runs in O(|V|^3).
 
@@ -173,49 +195,55 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
       lattice: The input lattice.
 
     Returns:
-      A numpy array
+      A numpy array of dimensions NxN, where N is the unpadded lattice size.
     """
     pairwise = []
     for node_i in range(lattice.sent_len()):
-      pairwise.append(self.compute_log_conditionals_one(lattice, node_i))
+      if node_i < lattice.len_unpadded():
+        pairwise.append(self.compute_log_conditionals_one(lattice, node_i) + [LOG_ZERO]*(lattice.sent_len()-lattice.len_unpadded()))
+      else:
+        pairwise.append([LOG_ZERO] * lattice.sent_len())
     pairwise_fwd = np.asarray(pairwise)
 
     pairwise = []
-    for node_i in range(lattice.sent_len())[::-1]:
-      pairwise.append(list(reversed(self.compute_log_conditionals_one(lattice.reversed(), node_i))))
+    for node_i in range(lattice.sent_len()):
+      if node_i < lattice.len_unpadded():
+        pairwise.append(list(reversed(self.compute_log_conditionals_one(lattice.reversed(), lattice.len_unpadded()-1-node_i))) + [LOG_ZERO]*(lattice.sent_len()-lattice.len_unpadded()))
+      else:
+        pairwise.append([LOG_ZERO] * lattice.sent_len())
     pairwise_bwd = np.asarray(pairwise)
 
-    ret = np.maximum(pairwise_fwd, pairwise_bwd)
+    # ret = np.maximum(pairwise_fwd, pairwise_bwd)
+    ret = pairwise_bwd
 
-    for node_i in range(lattice.sent_len()):
+    for node_i in range(lattice.len_unpadded()):
       lattice.nodes[node_i].cond_log_prob = ret[annotate][node_i]
 
     return ret
 
 
-  def compute_log_conditionals_one(self, lattice: sent.Lattice, condition_on: numbers.Integral,
-                                   log_zero: numbers.Integral = -100.0) -> List[numbers.Real]:
+  def compute_log_conditionals_one(self, lattice: sent.Lattice, condition_on: numbers.Integral) -> List[numbers.Real]:
     """
     Compute conditional log probabilities for every node being visited after a given node has been visited.
 
     Note that this is directional: If V1 comes before V2 in a path, then the conditional will be zero.
 
-    Runs in O(|V|+|E|) = O(|V|^2) for a lattice with nodes V and edges E
+    Runs in O(|E|) = O(|V|^2) for a lattice with nodes V and edges E.
 
     Args:
       lattice: The lattice
       condition_on: index of node that must be traversed
-      log_zero: negative number that approximates the log of zero (-inf cannot be passed to DyNet)
 
     Returns:
-      List of log conditionals with same node ordering as for input lattice.
+      List of log conditionals with same node ordering as for input lattice. Note that padded nodes are ignored and have
+      no corresponding entry in the returned list.
     """
-    cond_log_probs = [log_zero] * lattice.sent_len()
+    cond_log_probs = [LOG_ZERO] * lattice.len_unpadded()
     cond_log_probs[condition_on] = 0.0
-    for node_i in range(lattice.sent_len()): # nodes are in topological order so we can simply loop in order
+    for node_i in range(lattice.len_unpadded()): # nodes are in topological order so we can simply loop in order
       node = lattice.nodes[node_i]
       for next_node in node.nodes_next:
         next_log_prob = lattice.nodes[next_node].fwd_log_prob
         next_cond_prob = math.exp(cond_log_probs[next_node]) + math.exp(next_log_prob) * math.exp(cond_log_probs[node_i])
-        cond_log_probs[next_node] = math.log(next_cond_prob) if next_cond_prob>0.0 else log_zero
+        cond_log_probs[next_node] = math.log(next_cond_prob) if next_cond_prob>0.0 else LOG_ZERO
     return cond_log_probs
