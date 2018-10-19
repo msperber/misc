@@ -35,7 +35,7 @@ lattice: !Experiment
                 transform: !MLP
                   activation: relu
               layer_norm: True
-    attender: !MlpAttender {}
+    attender: !LatticeBiasedMlpAttender {}
     trg_embedder: !SimpleWordEmbedder {}
     decoder: !AutoRegressiveDecoder
       rnn: !UniLSTMSeqTransducer
