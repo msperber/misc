@@ -96,6 +96,15 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
   """
   A lattice transducer for lattice inputs.
 
+  input_dim: size of inputs
+  param_init: how to initialize param matrices
+  bias_init: how to initialize bias params
+  num_heads: number of attention heads
+  probabilistic_masks: if ``True``, structure masks contain conditional log probs, otherwise they are binary masks
+  direction: ``None``: non-directional masks
+             ``'fwd'``: forward-directed masks
+             ``'bwd'``: backward-directed masks
+             ``'split'``: masks are forward-directed for half the attention heads, backward-directed for other heads
   """
   yaml_tag = '!MultiHeadAttentionLatticeTransducer'
 
@@ -106,7 +115,8 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
                param_init=Ref("exp_global.param_init", default=bare(param_initializers.GlorotInitializer)),
                bias_init=Ref("exp_global.bias_init", default=bare(param_initializers.ZeroInitializer)),
                num_heads=8,
-               probabilistic_masks=True):
+               probabilistic_masks=True,
+               direction=None):
     assert (input_dim % num_heads == 0)
 
     param_collection = param_collections.ParamManager.my_params(self)
@@ -121,6 +131,8 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     self.pbq, self.pbk, self.pbv, self.pbo = [
       param_collection.add_parameters(dim=(1, input_dim), init=bias_init.initializer((1, input_dim,))) for _ in
       range(4)]
+
+    self.direction = direction
 
     self.probabilistic_masks = probabilistic_masks
 
@@ -163,9 +175,10 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
 
     pairwise_cond = []
     for lattice_batch_elem in self.cur_src:
-      cur_expr = dy.inputTensor(self.compute_pairwise_log_conditionals(lattice_batch_elem))
-      for _ in range(self.num_heads):
-        pairwise_cond.append(cur_expr)
+      mask_arrays = self.compute_pairwise_log_conditionals(lattice_batch_elem)
+      mask_expressions = [dy.inputTensor(mask_array) for mask_array in mask_arrays]
+      for head_i in range(self.num_heads):
+        pairwise_cond.append(mask_expressions[head_i % len(mask_arrays)])
     pairwise_cond = dy.concatenate_to_batch(pairwise_cond)
 
     # Do scaled dot product [(length, length) x batch * num_heads], rows are queries, columns are keys
@@ -187,7 +200,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     return expr_seq
 
   @functools.lru_cache(maxsize=None)
-  def compute_pairwise_log_conditionals(self, lattice: sent.Lattice, annotate=0) -> np.ndarray:
+  def compute_pairwise_log_conditionals(self, lattice: sent.Lattice) -> List[np.ndarray]:
     """
     Compute pairwise log conditionals.
 
@@ -199,28 +212,36 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
       lattice: The input lattice.
 
     Returns:
-      A numpy array of dimensions NxN, where N is the unpadded lattice size.
+      A list of numpy arrays of dimensions NxN, where N is the unpadded lattice size.
+      The list contains as many entries as there are different masks, e.g. 2 items for fwd- and bwd-directed masks.
     """
-    pairwise = []
-    for node_i in range(lattice.sent_len()):
-      if node_i < lattice.len_unpadded():
-        pairwise.append(self.compute_log_conditionals_one(lattice, node_i) + [LOG_ZERO]*(lattice.sent_len()-lattice.len_unpadded()))
-      else:
-        pairwise.append([LOG_ZERO] * lattice.sent_len())
-    pairwise_fwd = np.asarray(pairwise)
+    if self.direction != 'bwd':
+      pairwise = []
+      for node_i in range(lattice.sent_len()):
+        if node_i < lattice.len_unpadded():
+          pairwise.append(self.compute_log_conditionals_one(lattice, node_i) + [LOG_ZERO]*(lattice.sent_len()-lattice.len_unpadded()))
+        else:
+          pairwise.append([LOG_ZERO] * lattice.sent_len())
+      pairwise_fwd = np.asarray(pairwise)
 
-    pairwise = []
-    for node_i in range(lattice.sent_len()):
-      if node_i < lattice.len_unpadded():
-        pairwise.append(list(reversed(self.compute_log_conditionals_one(lattice.reversed(), lattice.len_unpadded()-1-node_i))) + [LOG_ZERO]*(lattice.sent_len()-lattice.len_unpadded()))
-      else:
-        pairwise.append([LOG_ZERO] * lattice.sent_len())
-    pairwise_bwd = np.asarray(pairwise)
+    if self.direction != 'fwd':
+      pairwise = []
+      for node_i in range(lattice.sent_len()):
+        if node_i < lattice.len_unpadded():
+          pairwise.append(list(reversed(self.compute_log_conditionals_one(lattice.reversed(), lattice.len_unpadded()-1-node_i))) + [LOG_ZERO]*(lattice.sent_len()-lattice.len_unpadded()))
+        else:
+          pairwise.append([LOG_ZERO] * lattice.sent_len())
+      pairwise_bwd = np.asarray(pairwise)
 
-    ret = np.maximum(pairwise_fwd, pairwise_bwd)
-
-    for node_i in range(lattice.len_unpadded()):
-      lattice.nodes[node_i].cond_log_prob = ret[annotate][node_i]
+    if self.direction is None:
+      ret = [np.maximum(pairwise_fwd, pairwise_bwd)]
+    elif self.direction=="fwd":
+      ret = [pairwise_fwd]
+    elif self.direction=="bwd":
+      ret = [pairwise_bwd]
+    else:
+      if self.direction!="split": raise ValueError(f"unknown direction argument '{self.direction}'")
+      ret = [pairwise_fwd, pairwise_bwd]
 
     return ret
 
