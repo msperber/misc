@@ -3,7 +3,7 @@ from typing import Optional, Sequence
 import dynet as dy
 import numpy as np
 
-from xnmt import batchers, event_trigger, inferences, input_readers, losses, sent, vocabs
+from xnmt import batchers, event_trigger, inferences, input_readers, sent, vocabs
 from xnmt.eval import metrics
 from xnmt.modelparts import embedders, transforms
 from xnmt.models import base as models
@@ -13,15 +13,17 @@ from xnmt.persistence import serializable_init, Serializable, bare, Ref
 
 class BowPredictor(models.ConditionedModel, models.GeneratorModel, Serializable):
   """
-  A default translator based on attentional sequence-to-sequence models.
+  Predicts a bag of words from an input sequence.
 
   Args:
     src_reader: A reader for the source side.
     trg_reader: A reader for the target side.
     src_embedder: A word embedder for the input language
     encoder: An encoder to generate encoded inputs
-    inference:
+    inference: The default inference strategy used for this model
+    hidden_dim: hidden size for the output layer
     output_layer: final prediction linear layer
+    generate_per_step:
     mode: ``avg_mlp``: avg(encoder states) -> linear -> sigmoid -> binary_log_loss                ["vote-then-classify"]
           ``final_mlp``: final encoder states -> linear -> sigmoid -> binary_log_loss                       ["remember"]
           ``lin_sum_sig``: sum ( enc_state -> linear ) -> sigmoid -> binary_log_loss              ["classify-then-vote"]

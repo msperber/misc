@@ -11,7 +11,17 @@ from xnmt.persistence import Serializable, serializable_init, Ref, bare
 class QLSTMSeqTransducer(transducers.SeqTransducer, Serializable):
   """
   This implements the quasi-recurrent neural network with input, output, and forget gate.
-  https://arxiv.org/abs/1611.01576
+
+  See https://arxiv.org/abs/1611.01576
+
+  Args:
+    input_dim: input size
+    hidden_dim: hidden size
+    dropout: apply dropout as described in the paper
+    filter_width: width of convolutional filters
+    stride: convolutional stride
+    param_init: how to initialize param matrices
+    bias_init: how to initialize bias params
   """
   yaml_tag = u'!QLSTMSeqTransducer'
 
@@ -113,6 +123,21 @@ class QLSTMSeqTransducer(transducers.SeqTransducer, Serializable):
 
 
 class BiQLSTMSeqTransducer(transducers.SeqTransducer, Serializable):
+  """
+  Wires several unidirectional quasi LSTMs to form a stacked bidirectional quasi LSTM.
+
+  Args:
+    layers: number of layers
+    input_dim: input size
+    hidden_dim: size of hidden layers
+    dropout: dropout rate
+    stride: convolutional stride
+    filter_width: width of convolutional filter
+    param_init: how to initialize param matrices
+    bias_init: how to initialize bias params
+    forward_layers: set automatically
+    backward_layers: set automatically
+  """
   yaml_tag = u'!BiQLSTMSeqTransducer'
 
   @events.register_xnmt_handler

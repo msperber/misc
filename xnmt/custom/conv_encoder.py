@@ -29,7 +29,6 @@ class StridedConvSeqTransducer(transducers.SeqTransducer, Serializable):
     pre_activation: If True, please BN + nonlinearity before CNN
     output_tensor: True -> output is a expression sequence holding a 3d-tensor (including channel dimension), in transposed form (time is first dimension)
                           False -> output is a expression sequence holding a list of flat vector expressions (frequency and channel dimensions are merged)
-    transpose:
     param_init: how to initialize filter parameters
 
   """
@@ -48,7 +47,6 @@ class StridedConvSeqTransducer(transducers.SeqTransducer, Serializable):
                nonlinearity: str = "rectify",
                pre_activation: bool = False,
                output_tensor: bool = False,
-               transpose: bool = True,
                param_init: param_initializers.ParamInitializer = Ref("exp_global.param_init",
                                                                   default=bare(param_initializers.GlorotInitializer))):
     assert layers > 0
@@ -69,7 +67,6 @@ class StridedConvSeqTransducer(transducers.SeqTransducer, Serializable):
 
     self.use_bn = batch_norm
     self.train = True
-    self.transpose = transpose
     self.weight_noise = regularizers.WeightNoise(weight_noise)
 
     self.bn_layers = []

@@ -5,6 +5,19 @@ from xnmt import event_trigger, losses, loss_calculators
 from xnmt.persistence import Serializable, serializable_init
 
 class DualEncoderSimilarity(models.ConditionedModel, Serializable):
+  """
+  Trains two encoders to produce the same outputs using a similarity-based loss.
+
+  The two encoders are refered to as src and trg encoders below.
+
+  Args:
+    src_reader: A reader for the source side.
+    trg_reader: A reader for the target side.
+    src_embedder: A word embedder for the source language
+    src_encoder: An encoder to generate encoded source inputs
+    trg_embedder: A word embedder for the target language
+    trg_encoder: An encoder to generate encoded target inputs
+  """
 
   yaml_tag = "!DualEncoderSimilarity"
 
@@ -33,10 +46,17 @@ class DualEncoderSimilarity(models.ConditionedModel, Serializable):
 
 
 class DistLoss(Serializable, loss_calculators.LossCalculator):
+  """
+  A loss for the similarity of the two sequences by taking each sequence's average vector and computing e.g. MSE.
+
+  Args:
+     dist_op: a DyNet operation that computes a loss based on the difference of the two average vectors.
+  """
+
   yaml_tag = '!DistLoss'
 
   @serializable_init
-  def __init__(self, dist_op="squared_norm"):
+  def __init__(self, dist_op: str = "squared_norm") -> None:
     if callable(dist_op):
       self.dist_op = dist_op
     else:

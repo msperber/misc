@@ -1,7 +1,15 @@
-from xnmt import batcher, input_reader, translator
+from xnmt import input_readers
+from xnmt.models import translators
 from xnmt.persistence import Serializable, serializable_init
 
-class EnsembleInputReader(input_reader.InputReader, Serializable):
+class EnsembleInputReader(input_readers.InputReader, Serializable):
+  """
+  An input reader to use for ensembling to models that have different inputs (e.g. speech and text)
+
+  Args:
+    input_reader1: input reader for first model
+    input_reader2: input reader for secondmodel
+  """
   yaml_tag = "!EnsembleInputReader"
   @serializable_init
   def __init__(self, input_reader1, input_reader2):
@@ -12,7 +20,7 @@ class EnsembleInputReader(input_reader.InputReader, Serializable):
 
   def read_sents(self, filename, filter_ids=None):
     for s in zip(self.input_reader1.read_sents(filename[0]), self.input_reader2.read_sents(filename[1])):
-      yield translator.EnsembleListDelegate([s[0],s[1]])
+      yield translators.EnsembleListDelegate([s[0],s[1]])
 
   def count_sents(self, filename):
     cnt = self.input_reader1.count_sents()

@@ -1,6 +1,12 @@
 import dynet as dy
 
 class WeightNoise(object):
+  """
+  Implements weight noise as a regularizer.
+
+  Args:
+    std: standard deviation of noise.
+  """
   def __init__(self, std):
     self.std = std
   def __call__(self, p, train=True):

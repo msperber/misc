@@ -1,5 +1,7 @@
 import math
 from collections.abc import Sequence
+from typing import Optional
+import numbers
 
 from xnmt import expression_seqs, param_initializers
 from xnmt.transducers import base as transducers, recurrent
@@ -10,12 +12,28 @@ from xnmt.persistence import serializable_init, Serializable, Ref, bare
 
 
 class ZhangSeqTransducer(transducers.ModularSeqTransducer, Serializable):
+  """
+  This is an audio encoder described in Zhang et al (2017): Very Deep Convolutional Networks for End-to-End Speech Recognition.
+
+  It consists of two BiLSTM/NiN layers plus a final BiLSTM layer.
+  It applies downsampling of 2x2, i.e. the total downsampling factor is 4.
+  This encoder was used as a baseline in Sperber et al (2018): Self-Attentional Acoustic Models
+
+  Args:
+    input_dim: size of input vectors
+    hidden_dim: hidden dimension
+    dropout: dropout rate for variational dropout in LSTMs
+    bottom_layer: (set automatically)
+    top_layer: (set automatically)
+  """
   yaml_tag = "!ZhangSeqTransducer"
   @serializable_init
   def __init__(self,
-               input_dim, hidden_dim,
-               dropout=Ref("exp_global.dropout", default=0.0),
-               bottom_layer=None, top_layer=None):
+               input_dim: numbers.Integral,
+               hidden_dim: numbers.Integral,
+               dropout: numbers.Real = Ref("exp_global.dropout", default=0.0),
+               bottom_layer: Optional['NinBiLSTMTransducer']=None,
+               top_layer: Optional[recurrent.BiLSTMSeqTransducer]=None):
     self.bottom_layer = self.add_serializable_component("bottom_layer", bottom_layer,
                                                         lambda: NinBiLSTMTransducer(layers=2,
                                                                                     input_dim=input_dim,
@@ -42,7 +60,7 @@ class NinBiLSTMTransducer(transducers.SeqTransducer, Serializable):
     hidden_dim: size of the outputs (and intermediate layer representations)
     stride: in projection layer, concatenate n frames and thus use the projection for downsampling
     dropout: LSTM dropout
-    builder_layers: set automatically
+    lstm_layers: set automatically
     nin_layers: set automatically
     param_init_lstm: a ParamInitializer or list of ParamInitializer objects
                 specifying how to initialize weight matrices. If a list is given, each entry denotes one layer.

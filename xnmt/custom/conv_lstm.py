@@ -7,7 +7,7 @@ from xnmt.persistence import Serializable, serializable_init, Ref, bare
 
 class ConvLSTMSeqTransducer(transducers.SeqTransducer, Serializable):
   """
-  This is a convolutional LSTM implementation using a single bidirectional layer.
+  A convolutional LSTM with a single bidirectional layer.
 
   Follows Shi et al, 2015: Convolutional LSTM Network: A Machine Learning Approach for Precipitation Nowcasting
   https://arxiv.org/pdf/1506.04214.pdf
