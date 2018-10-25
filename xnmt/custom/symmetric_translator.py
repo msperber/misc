@@ -1,4 +1,4 @@
-from typing import Optional, Sequence, Union
+from typing import List, Optional, Sequence, Union
 import numbers
 import random
 
@@ -6,7 +6,7 @@ import numpy as np
 import dynet as dy
 
 from xnmt import batchers, expression_seqs, event_trigger, events, inferences, input_readers, losses, \
-  param_collections, param_initializers, reports, sent, vocabs
+  reports, sent, vocabs
 from xnmt.modelparts import attenders, bridges, embedders, scorers, transforms
 from xnmt.models import base as models
 from xnmt.persistence import Serializable, serializable_init, bare, Ref
@@ -22,19 +22,25 @@ class SymmetricDecoderState(object):
 class SymmetricTranslator(models.ConditionedModel, models.GeneratorModel, Serializable, transducers.SeqTransducer,
                           reports.Reportable):
   """
+  This is a attentional encoder-decoder that can be used as encoder for another translator to form a two-stage model.
+
+  This is achieved by implementing the GeneratorModel's ``generate()`` method, the ConditionedModel's ``generate()``,
+   and the SeqTransducer ``transduce()`` method. The latter will transduce a sequence into another by running
+   the sequence-to-sequence model with a greedy search (no beam search supported currently).
+
   Args:
-    src_reader:
-    trg_reader:
-    src_embedder:
-    encoder:
-    attender:
-    dec_lstm:
-    bridge:
-    transform:
-    scorer:
-    inference:
-    max_dec_len:
-    mode: what to feed into the LSTM input
+    src_reader: A reader for the source side.
+    trg_reader: A reader for the target side.
+    src_embedder: A word embedder for the input language
+    encoder: An encoder to generate encoded inputs
+    attender: An attention module
+    dec_lstm: recurrent decoder
+    bridge: how to initialize decoder state
+    transform: a layer of transformation between rnn and output scorer
+    scorer: the method of scoring the output (usually softmax)
+    inference: The default inference strategy used for this model
+    max_dec_len: Maximum length of output sequence (when not in teacher forcing training)
+    mode: what to feed into the decoder LSTM input
           * ``context``: feed the previous attention context
           * ``expected``: word embeddings weighted by softmax probs from last time step
           * ``argmax``: discrete token lookup based on model predictions
@@ -89,7 +95,7 @@ class SymmetricTranslator(models.ConditionedModel, models.GeneratorModel, Serial
                split_context_transform: Optional[transforms.Transform]= None,
                sampling_prob: numbers.Number = 0.0,
                transduce_oracle: bool = False,
-               compute_report: bool = Ref("exp_global.compute_report", default=False)):
+               compute_report: bool = Ref("exp_global.compute_report", default=False)) -> None:
     super().__init__(src_reader=src_reader, trg_reader=trg_reader)
     assert mode is None or (mode_translate is None and mode_transduce is None), \
       f"illegal combination: mode={mode}, mode_translate={mode_translate}, mode_transduce={mode_transduce}"
@@ -162,7 +168,7 @@ class SymmetricTranslator(models.ConditionedModel, models.GeneratorModel, Serial
   def on_set_train(self, val):
     self.train = val
 
-  def transduce(self, x):
+  def transduce(self, x: expression_seqs.ExpressionSequence) -> expression_seqs.ExpressionSequence:
     # some preparations
     output_states = []
     current_state = self._encode_src(x, apply_emb=False)
@@ -285,10 +291,11 @@ class SymmetricTranslator(models.ConditionedModel, models.GeneratorModel, Serial
     ref_action = batchers.mark_as_batch(ref_action)
     return ref_action
 
-  def get_final_states(self):
+  def get_final_states(self) -> List[transducers.FinalTransducerState]:
     return self._final_states
 
-  def calc_nll(self, src, trg):
+  def calc_nll(self, src: Union[batchers.Batch, sent.Sentence], trg: Union[batchers.Batch, sent.Sentence]) \
+          -> dy.Expression:
     event_trigger.start_sent(src)
     if isinstance(src, batchers.CompoundBatch):
       src, _ = src.batches
@@ -321,7 +328,8 @@ class SymmetricTranslator(models.ConditionedModel, models.GeneratorModel, Serial
 
     return dy.esum(losses)
 
-  def generate(self, src, forced_trg_ids=None, **kwargs):
+  def generate(self, src: batchers.Batch, forced_trg_ids: Optional[list]=None, **kwargs) \
+          -> Sequence[sent.ReadableSentence]:
     event_trigger.start_sent(src)
     if isinstance(src, batchers.CompoundBatch):
       src = src.batches[0]
@@ -504,81 +512,3 @@ class SymmetricTranslator(models.ConditionedModel, models.GeneratorModel, Serial
     else: return losses.FactoredLossExpr(loss_dict)
 
 
-# TODO: implement as an option in MlpAttender instead; keep conv params in serializable sub-object so that we can
-# simply finetune an otherwise complete model
-class MlpLocationAttender(attenders.Attender, Serializable):
-  """
-  Implements the attention model of Chorowski et. al (2015): Attention-Based Models for Speech Recognition.
-
-  This adds a convolutional filter over the previous timestep's attention scores.
-
-  Args:
-    input_dim: input dimension
-    state_dim: dimension of state inputs
-    hidden_dim: hidden MLP dimension
-    param_init: how to initialize weight matrices
-    bias_init: how to initialize bias vectors
-  """
-
-  yaml_tag = '!MlpLocationAttender'
-
-
-  @serializable_init
-  def __init__(self,
-               input_dim: numbers.Integral = Ref("exp_global.default_layer_dim"),
-               state_dim: numbers.Integral = Ref("exp_global.default_layer_dim"),
-               hidden_dim: numbers.Integral = Ref("exp_global.default_layer_dim"),
-               param_init: param_initializers.ParamInitializer = Ref("exp_global.param_init", default=bare(param_initializers.GlorotInitializer)),
-               bias_init: param_initializers.ParamInitializer = Ref("exp_global.bias_init", default=bare(param_initializers.ZeroInitializer)))\
-          -> None:
-    self.input_dim = input_dim
-    self.state_dim = state_dim
-    self.hidden_dim = hidden_dim
-    param_collection = param_collections.ParamManager.my_params(self)
-    self.pW = param_collection.add_parameters((hidden_dim, input_dim), init=param_init.initializer((hidden_dim, input_dim)))
-    self.pV = param_collection.add_parameters((hidden_dim, state_dim), init=param_init.initializer((hidden_dim, state_dim)))
-    self.pb = param_collection.add_parameters((hidden_dim,), init=bias_init.initializer((hidden_dim,)))
-    self.pU = param_collection.add_parameters((1, hidden_dim), init=param_init.initializer((1, hidden_dim)))
-    self.pL = param_collection.add_parameters((100, 1, 1, hidden_dim), init=param_init.initializer((100, 1, 1, hidden_dim)))
-    self.curr_sent = None
-
-  def init_sent(self, sent: expression_seqs.ExpressionSequence):
-    self.attention_vecs = []
-    self.curr_sent = sent
-    I = self.curr_sent.as_tensor()
-    W = dy.parameter(self.pW)
-    b = dy.parameter(self.pb)
-    self.WI = dy.affine_transform([b, W, I])
-    wi_dim = self.WI.dim()
-    # if the input size is "1" then the last dimension will be dropped.
-    if len(wi_dim[0]) == 1:
-      self.WI = dy.reshape(self.WI, (wi_dim[0][0], 1), batch_size=wi_dim[1])
-
-  def calc_attention(self, state):
-    V = dy.parameter(self.pV)
-    U = dy.parameter(self.pU)
-
-    WI = self.WI
-    curr_sent_mask = self.curr_sent.mask
-    if self.attention_vecs:
-      conv_feats = dy.conv2d(self.attention_vecs[-1],
-                             self.pL,
-                             stride=[1, 1],
-                             is_valid=False)
-      conv_feats = dy.transpose(dy.reshape(conv_feats,
-                                           (conv_feats.dim()[0][0],self.hidden_dim),
-                                           batch_size=conv_feats.dim()[1]))
-      h = dy.tanh(dy.colwise_add(WI + conv_feats, V * state))
-    else:
-      h = dy.tanh(dy.colwise_add(WI, V * state))
-    scores = dy.transpose(U * h)
-    if curr_sent_mask is not None:
-      scores = curr_sent_mask.add_to_tensor_expr(scores, multiplicator = -100.0)
-    normalized = dy.softmax(scores)
-    self.attention_vecs.append(normalized)
-    return normalized
-
-  def calc_context(self, state):
-    attention = self.calc_attention(state)
-    I = self.curr_sent.as_tensor()
-    return I * attention

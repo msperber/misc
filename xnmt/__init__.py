@@ -22,6 +22,7 @@ dyparams.from_args()
 # all Serializable objects must be imported here in order to be parsable
 # using the !Classname YAML syntax
 import xnmt.batchers
+import xnmt.custom.attenders
 import xnmt.custom.bow
 import xnmt.custom.dual_encoder
 import xnmt.custom.nin_lstm
