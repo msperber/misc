@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 """
 Adds artificial noise to text, as described here: Sperber et al (2017), Toward Robust Neural Machine Translation for Noisy Inputs
 
@@ -34,10 +31,7 @@ __date__        = "March 10, 2017"
 import sys, os
 import io
 import docopt
-import math
 import numpy as np
-from scipy.special import binom
-from scipy.misc import logsumexp
 
 class Usage(Exception):
   def __init__(self, msg):
@@ -203,7 +197,7 @@ def get_similarities(word, vocab):
 
 def main(argv=None):
   arguments = docopt.docopt(__doc__, options_first=True, argv=argv)
-  print arguments
+  print(arguments)
     
   tau = float(arguments["<tau>"])
   inputFileName = arguments["<in.txt>"]
@@ -282,12 +276,12 @@ def main(argv=None):
     if outputFileName is not None:
       outF.write((outLine + u"\n"))
     else:
-      print outLine
+      print(outLine)
   
-  print >> sys.stderr, "=========="
-  print >> sys.stderr, "average edit rate:", \
+  print("==========", file=sys.stderr)
+  print("average edit rate:", \
           float(total_sub+total_ins+total_del)/float(total_ref_len)*100.0, \
-          "% (S:", total_sub, ", I:", total_ins, ", D:", total_del, ")"
+          "% (S:", total_sub, ", I:", total_ins, ", D:", total_del, ")", file=sys.stderr)
   if outputFileName is not None:
     outF.close()
     os.rename(outputFileName + ".tmp", outputFileName)
