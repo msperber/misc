@@ -2,11 +2,11 @@ import numbers
 
 import dynet as dy
 
-import expression_seqs
-import param_collections
-import param_initializers
-from modelparts import attenders
-from persistence import Serializable, serializable_init, Ref, bare
+from xnmt import expression_seqs
+from xnmt import param_collections
+from xnmt import param_initializers
+from xnmt.modelparts import attenders
+from xnmt.persistence import Serializable, serializable_init, Ref, bare
 
 
 class MlpLocationAttender(attenders.Attender, Serializable):
