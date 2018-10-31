@@ -425,8 +425,7 @@ class TransformerEncoderLayer(Serializable):
       self.feed_forward = self.add_serializable_component("feed_forward",
                                                           feed_forward,
                                                           lambda: SAAMPositionwiseFeedForward(hidden_dim, ff_hidden_dim,
-                                                                                              nonlinearity=nonlinearity,
-                                                                                              param_init=param_init))
+                                                                                              nonlinearity=nonlinearity))
     self.head_count = head_count
     self.downsample_factor = downsample_factor
     self.diagonal_mask_width = diagonal_mask_width
