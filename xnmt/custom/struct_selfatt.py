@@ -175,7 +175,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
 
     pairwise_cond = []
     for lattice_batch_elem in self.cur_src:
-      mask_arrays = self.compute_pairwise_log_conditionals(lattice_batch_elem)
+      mask_arrays = self.compute_pairwise_log_conditionals(lattice_batch_elem.get_unpadded_sent())
       mask_expressions = [dy.inputTensor(mask_array) for mask_array in mask_arrays]
       for head_i in range(self.num_heads):
         pairwise_cond.append(mask_expressions[head_i % len(mask_arrays)])
