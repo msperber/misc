@@ -1,7 +1,7 @@
 import functools
 import math
 import numbers
-from typing import List
+from typing import List, Sequence
 
 import numpy as np
 import scipy.sparse, scipy.sparse.csgraph
@@ -176,9 +176,10 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     pairwise_cond = []
     for lattice_batch_elem in self.cur_src:
       mask_arrays = self.compute_pairwise_log_conditionals(lattice_batch_elem.get_unpadded_sent())
-      mask_expressions = [dy.inputTensor(mask_array) for mask_array in mask_arrays]
       for head_i in range(self.num_heads):
-        pairwise_cond.append(mask_expressions[head_i % len(mask_arrays)])
+        pairwise_cond.append(mask_arrays[head_i % len(mask_arrays)])
+    pairwise_cond = self.pad_masks(pairwise_cond)
+    pairwise_cond = [dy.inputTensor(mask_array) for mask_array in pairwise_cond]
     pairwise_cond = dy.concatenate_to_batch(pairwise_cond)
 
     # Do scaled dot product [(length, length) x batch * num_heads], rows are queries, columns are keys
@@ -199,6 +200,18 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
 
     return expr_seq
 
+  def pad_masks(self, masks: Sequence[np.ndarray]):
+    max_size = max(m.shape[0] for m in masks)
+    padded = []
+    for mask in masks:
+      if mask.shape[0] < max_size:
+        cur_padded = np.full(shape=(max_size,max_size),fill_value=LOG_ZERO)
+        cur_padded[:mask.shape[0],:mask.shape[1]] = mask
+        padded.append(cur_padded)
+      else:
+        padded.append(mask)
+    return padded
+
   @functools.lru_cache(maxsize=None)
   def compute_pairwise_log_conditionals(self, lattice: sent.Lattice) -> List[np.ndarray]:
     """
@@ -215,22 +228,17 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
       A list of numpy arrays of dimensions NxN, where N is the unpadded lattice size.
       The list contains as many entries as there are different masks, e.g. 2 items for fwd- and bwd-directed masks.
     """
+    assert lattice.sent_len() == lattice.len_unpadded()
     if self.direction != 'bwd':
       pairwise = []
-      for node_i in range(lattice.sent_len()):
-        if node_i < lattice.len_unpadded():
-          pairwise.append(self.compute_log_conditionals_one(lattice, node_i) + [LOG_ZERO]*(lattice.sent_len()-lattice.len_unpadded()))
-        else:
-          pairwise.append([LOG_ZERO] * lattice.sent_len())
+      for node_i in range(lattice.len_unpadded()):
+        pairwise.append(self.compute_log_conditionals_one(lattice, node_i))
       pairwise_fwd = np.asarray(pairwise)
 
     if self.direction != 'fwd':
       pairwise = []
-      for node_i in range(lattice.sent_len()):
-        if node_i < lattice.len_unpadded():
-          pairwise.append(list(reversed(self.compute_log_conditionals_one(lattice.reversed(), lattice.len_unpadded()-1-node_i))) + [LOG_ZERO]*(lattice.sent_len()-lattice.len_unpadded()))
-        else:
-          pairwise.append([LOG_ZERO] * lattice.sent_len())
+      for node_i in range(lattice.len_unpadded()):
+        pairwise.append(list(reversed(self.compute_log_conditionals_one(lattice.reversed(), lattice.len_unpadded()-1-node_i))))
       pairwise_bwd = np.asarray(pairwise)
 
     if self.direction is None:
