@@ -105,6 +105,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
              ``'fwd'``: forward-directed masks
              ``'bwd'``: backward-directed masks
              ``'split'``: masks are forward-directed for half the attention heads, backward-directed for other heads
+  ignore_mask: If ``True``, the structure masks are not applied (padding masks are always applied)
   """
   yaml_tag = '!MultiHeadAttentionLatticeTransducer'
 
@@ -116,7 +117,8 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
                bias_init=Ref("exp_global.bias_init", default=bare(param_initializers.ZeroInitializer)),
                num_heads=8,
                probabilistic_masks=True,
-               direction=None):
+               direction=None,
+               ignore_mask=False):
     assert (input_dim % num_heads == 0)
 
     param_collection = param_collections.ParamManager.my_params(self)
@@ -135,6 +137,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     self.direction = direction
 
     self.probabilistic_masks = probabilistic_masks
+    self.ignore_mask = ignore_mask
 
   @events.handle_xnmt_event
   def on_start_sent(self, src):
@@ -173,18 +176,19 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     # Split to batches [(length, head_dim) x batch * num_heads] tensor
     q, k, v = [dy.reshape(x, (x_len, self.head_dim), batch_size=x_batch * self.num_heads) for x in (q, k, v)]
 
-    pairwise_cond = []
-    for lattice_batch_elem in self.cur_src:
-      mask_arrays = self.compute_pairwise_log_conditionals(lattice_batch_elem.get_unpadded_sent())
-      for head_i in range(self.num_heads):
-        pairwise_cond.append(mask_arrays[head_i % len(mask_arrays)])
-    pairwise_cond = self.pad_masks(pairwise_cond)
-    pairwise_cond = [dy.inputTensor(mask_array) for mask_array in pairwise_cond]
-    pairwise_cond = dy.concatenate_to_batch(pairwise_cond)
+    if not self.ignore_mask:
+      pairwise_cond = []
+      for lattice_batch_elem in self.cur_src:
+        mask_arrays = self.compute_pairwise_log_conditionals(lattice_batch_elem.get_unpadded_sent())
+        for head_i in range(self.num_heads):
+          pairwise_cond.append(mask_arrays[head_i % len(mask_arrays)])
+      pairwise_cond = self.pad_masks(pairwise_cond)
+      pairwise_cond = [dy.inputTensor(mask_array) for mask_array in pairwise_cond]
+      pairwise_cond = dy.concatenate_to_batch(pairwise_cond)
 
     # Do scaled dot product [(length, length) x batch * num_heads], rows are queries, columns are keys
     attn_score = q * dy.transpose(k) / math.sqrt(self.head_dim)
-    attn_score += pairwise_cond
+    if not self.ignore_mask: attn_score += pairwise_cond
     if expr_seq.mask is not None:
       mask = dy.inputTensor(np.repeat(expr_seq.mask.np_arr, self.num_heads, axis=0).transpose(), batched=True) * LOG_ZERO
       attn_score = attn_score + mask
