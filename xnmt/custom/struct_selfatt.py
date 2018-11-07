@@ -105,6 +105,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
              ``'fwd'``: forward-directed masks
              ``'bwd'``: backward-directed masks
              ``'split'``: masks are forward-directed for half the attention heads, backward-directed for other heads
+             ``'adjacent'``: mask out non-adjacent states, similar to the graph attention networks ( https://arxiv.org/pdf/1710.10903.pdf )
   ignore_mask: If ``True``, the structure masks are not applied (padding masks are always applied)
   """
   yaml_tag = '!MultiHeadAttentionLatticeTransducer'
@@ -179,7 +180,10 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     if not self.ignore_mask:
       pairwise_cond = []
       for lattice_batch_elem in self.cur_src:
-        mask_arrays = self.compute_pairwise_log_conditionals(lattice_batch_elem.get_unpadded_sent())
+        if self.direction == "adjacent":
+          mask_arrays = [self.compute_adjacent(lattice_batch_elem.get_unpadded_sent())]
+        else:
+          mask_arrays = self.compute_pairwise_log_conditionals(lattice_batch_elem.get_unpadded_sent())
         for head_i in range(self.num_heads):
           pairwise_cond.append(mask_arrays[head_i % len(mask_arrays)])
       pairwise_cond = self.pad_masks(pairwise_cond)
@@ -209,12 +213,22 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
     padded = []
     for mask in masks:
       if mask.shape[0] < max_size:
-        cur_padded = np.full(shape=(max_size,max_size),fill_value=LOG_ZERO)
+        cur_padded = np.full(shape=(max_size, max_size), fill_value=LOG_ZERO)
         cur_padded[:mask.shape[0],:mask.shape[1]] = mask
         padded.append(cur_padded)
       else:
         padded.append(mask)
     return padded
+
+  @functools.lru_cache(maxsize=None)
+  def compute_adjacent(self, lattice: sent.Lattice) -> np.ndarray:
+    ret = np.full(shape=(lattice.len_unpadded(), lattice.len_unpadded()), fill_value=LOG_ZERO)
+    for node_i, node in enumerate(lattice.nodes):
+      ret[node_i, node_i] = 0.0
+      for node_j in node.nodes_next:
+        ret[node_i,node_j] = 0.0
+        ret[node_j, node_i] = 0.0
+    return ret
 
   @functools.lru_cache(maxsize=None)
   def compute_pairwise_log_conditionals(self, lattice: sent.Lattice) -> List[np.ndarray]:
