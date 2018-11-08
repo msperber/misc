@@ -23,16 +23,19 @@ class LatticePositionalSeqTransducer(transducers.SeqTransducer, Serializable):
                op: str = 'sum',
                emb_type: str = 'param',
                input_dim: numbers.Integral = Ref("exp_global.default_layer_dim"),
+               dropout=Ref("exp_global.dropout", default=0.0),
                param_init: param_initializers.ParamInitializer = Ref("exp_global.param_init", default=bare(param_initializers.GlorotInitializer))):
     """
     max_pos: largest embedded position
     op: how to combine positional encodings with the original encodings, can be "sum" or "concat"
     type: what type of embddings to use, "param"=parameterized (others, such as the trigonometric embeddings are todo)
     input_dim: embedding size
+    dropout: apply dropout to output of this transducer
     param_init: how to initialize embedding matrix
     """
     self.max_pos = max_pos
     self.input_dim = input_dim
+    self.dropout = dropout
     self.op = op
     self.emb_type = emb_type
     param_init = param_init
@@ -42,6 +45,10 @@ class LatticePositionalSeqTransducer(transducers.SeqTransducer, Serializable):
 
   def get_final_states(self) -> List[transducers.FinalTransducerState]:
     return self._final_states
+
+  @events.handle_xnmt_event
+  def on_set_train(self, val):
+    self.train = val
 
   @events.handle_xnmt_event
   def on_start_sent(self, src):
@@ -61,6 +68,8 @@ class LatticePositionalSeqTransducer(transducers.SeqTransducer, Serializable):
       output = dy.concatenate([embeddings, src.as_tensor()])
     else:
       raise ValueError(f'Illegal op {op} in PositionalTransducer (options are "sum"/"concat")')
+    if self.train and self.dropout > 0.0:
+      output = dy.dropout(output, self.dropout)
     output_seq = expression_seqs.ExpressionSequence(expr_tensor=output, mask=src.mask)
     self._final_states = [transducers.FinalTransducerState(output_seq[-1])]
     return output_seq
