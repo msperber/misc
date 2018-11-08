@@ -97,6 +97,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
   A lattice transducer for lattice inputs.
 
   input_dim: size of inputs
+  dropout: dropout to apply to attention matrix
   param_init: how to initialize param matrices
   bias_init: how to initialize bias params
   num_heads: number of attention heads
@@ -114,6 +115,7 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
   @serializable_init
   def __init__(self,
                input_dim=Ref("exp_global.default_layer_dim"),
+               dropout=Ref("exp_global.dropout", default=0.0),
                param_init=Ref("exp_global.param_init", default=bare(param_initializers.GlorotInitializer)),
                bias_init=Ref("exp_global.bias_init", default=bare(param_initializers.ZeroInitializer)),
                num_heads=8,
@@ -121,6 +123,8 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
                direction=None,
                ignore_mask=False):
     assert (input_dim % num_heads == 0)
+
+    self.dropout = dropout
 
     param_collection = param_collections.ParamManager.my_params(self)
 
@@ -197,6 +201,8 @@ class MultiHeadAttentionLatticeTransducer(transducers.SeqTransducer, Serializabl
       mask = dy.inputTensor(np.repeat(expr_seq.mask.np_arr, self.num_heads, axis=0).transpose(), batched=True) * LOG_ZERO
       attn_score = attn_score + mask
     attn_prob = dy.softmax(attn_score, d=1)
+    if self.train and self.dropout > 0.0:
+      attn_prob = dy.dropout(attn_prob, self.dropout)
     # Reduce using attention and resize to match [(length, model_size) x batch]
     o = dy.reshape(attn_prob * v, (x_len, self.input_dim), batch_size=x_batch)
     # Final transformation
