@@ -3,8 +3,9 @@ import numbers
 
 import dynet as dy
 
+from xnmt import events
 from xnmt.expression_seqs import ExpressionSequence
-from xnmt.persistence import serializable_init, Serializable
+from xnmt.persistence import serializable_init, Serializable, Ref
 from xnmt.transducers.base import SeqTransducer, FinalTransducerState
 from xnmt.param_collections import ParamManager
 
@@ -16,13 +17,17 @@ class ResidualSeqTransducer(SeqTransducer, Serializable):
   Args:
     child the child transducer to wrap
     layer_norm: whether to perform layer normalization
+    dropout: whether to apply residual dropout
   """
 
   yaml_tag = '!ResidualSeqTransducer'
 
+  @events.register_xnmt_handler
   @serializable_init
-  def __init__(self, child: SeqTransducer, input_dim: numbers.Integral, layer_norm: bool = False):
+  def __init__(self, child: SeqTransducer, input_dim: numbers.Integral, layer_norm: bool = False,
+               dropout = Ref("exp_global.dropout", default=0.0)):
     self.child = child
+    self.dropout = dropout
     self.input_dim = input_dim
     self.layer_norm = layer_norm
     if layer_norm:
@@ -30,8 +35,15 @@ class ResidualSeqTransducer(SeqTransducer, Serializable):
       self.ln_g = model.add_parameters(dim=(input_dim,))
       self.ln_b = model.add_parameters(dim=(input_dim,))
 
+  @events.handle_xnmt_event
+  def on_set_train(self, val):
+    self.train = val
+
   def transduce(self, seq: ExpressionSequence) -> ExpressionSequence:
-    seq_tensor = self.child.transduce(seq).as_tensor() + seq.as_tensor()
+    if self.train and self.dropout > 0.0:
+      seq_tensor = dy.dropout(self.child.transduce(seq).as_tensor(), self.dropout) + seq.as_tensor()
+    else:
+      seq_tensor = self.child.transduce(seq).as_tensor() + seq.as_tensor()
     if self.layer_norm:
       d = seq_tensor.dim()
       seq_tensor = dy.reshape(seq_tensor, (d[0][0],), batch_size=d[0][1]*d[1])
