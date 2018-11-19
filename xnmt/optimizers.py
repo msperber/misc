@@ -1,4 +1,5 @@
 import numbers
+from typing import Optional
 
 import dynet as dy
 import numpy as np
