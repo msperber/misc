@@ -445,10 +445,11 @@ class LatticeReader(BaseTextReader, Serializable):
   yaml_tag = '!LatticeReader'
 
   @serializable_init
-  def __init__(self, vocab: Vocab, text_input: bool = False, flatten = False):
+  def __init__(self, vocab: Vocab, text_input: bool = False, flatten: Union[bool,str] = False):
     self.vocab = vocab
     self.text_input = text_input
     self.flatten = flatten
+    if isinstance(flatten, str): assert flatten=="keep_marginals"
 
   def read_sent(self, line, idx):
     if self.text_input:
@@ -472,7 +473,8 @@ class LatticeReader(BaseTextReader, Serializable):
         for node_i in range(len(nodes)):
           if node_i < len(nodes)-1: nodes[node_i].nodes_next.append(node_i+1)
           if node_i > 0: nodes[node_i].nodes_prev.append(node_i-1)
-          nodes[node_i].fwd_log_prob = nodes[node_i].bwd_log_prob = nodes[node_i].marginal_log_prob = 0.0
+          nodes[node_i].fwd_log_prob = nodes[node_i].bwd_log_prob = 0.0
+          if self.flatten != "keep_marginals": nodes[node_i].marginal_log_prob = 0.0
       else:
         for from_index, to_index in arc_list:
           nodes[from_index].nodes_next.append(to_index)
