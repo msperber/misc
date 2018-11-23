@@ -1,5 +1,5 @@
 import contextlib
-from typing import Sequence, Optional, Union
+from typing import Callable, Sequence, Optional, Union
 from collections import OrderedDict
 import numbers
 
@@ -10,6 +10,7 @@ import dynet as dy
 from xnmt.models.base import ConditionedModel
 from xnmt.loss_trackers import TrainLossTracker
 from xnmt.loss_calculators import LossCalculator, MLELoss
+from xnmt.losses import FactoredLossExpr
 from xnmt.param_collections import ParamManager
 from xnmt.persistence import serializable_init, Serializable, bare, Ref
 from xnmt import event_trigger, optimizers, batchers, utils
@@ -226,13 +227,13 @@ class AutobatchTrainingRegimen(SimpleTrainingRegimen):
 
   @serializable_init
   def __init__(self,
-               model: models.ConditionedModel = Ref("model"),
+               model: ConditionedModel = Ref("model"),
                src_file: Union[None, str, Sequence[str]] = None,
                trg_file: Optional[str] = None,
                dev_every: numbers.Integral = 0,
                dev_zero: bool = False,
                batcher: batchers.Batcher = bare(batchers.SrcBatcher, batch_size=32),
-               loss_calculator: loss_calculators.LossCalculator = bare(loss_calculators.MLELoss),
+               loss_calculator: LossCalculator = bare(MLELoss),
                trainer: optimizers.XnmtOptimizer = bare(optimizers.SimpleSGDTrainer, e0=0.1),
                run_for_epochs: Optional[numbers.Integral] = None,
                lr_decay: numbers.Real= 1.0,
@@ -277,7 +278,7 @@ class AutobatchTrainingRegimen(SimpleTrainingRegimen):
     self.dev_zero = dev_zero
     self.trainer = trainer or optimizers.SimpleSGDTrainer(e0=0.1)
     self.dynet_profiling = commandline_args.get("dynet_profiling", 0) if commandline_args else 0
-    self.train_loss_tracker = loss_trackers.TrainLossTracker(self)
+    self.train_loss_tracker = TrainLossTracker(self)
     self.loss_comb_method = loss_comb_method
     self.update_every = update_every
     self.num_updates_skipped = 0
@@ -288,7 +289,7 @@ class AutobatchTrainingRegimen(SimpleTrainingRegimen):
     """
     dy.renew_cg(immediate_compute=settings.IMMEDIATE_COMPUTE, check_validity=settings.CHECK_VALIDITY)
     if self.run_for_epochs is None or self.run_for_epochs > 0:
-      total_loss = losses.FactoredLossExpr()
+      total_loss = FactoredLossExpr()
       # Needed for report
       total_trg = []
       for src, trg in self.next_minibatch():
@@ -310,7 +311,7 @@ class AutobatchTrainingRegimen(SimpleTrainingRegimen):
             total_loss_val = total_loss.get_factored_loss_val(comb_method=self.loss_comb_method)
             reported_trg = batchers.ListBatch(total_trg)
             self.train_loss_tracker.report(reported_trg, total_loss_val)
-            total_loss = losses.FactoredLossExpr()
+            total_loss = FactoredLossExpr()
             total_trg = []
             dy.renew_cg(immediate_compute=settings.IMMEDIATE_COMPUTE, check_validity=settings.CHECK_VALIDITY)
         if self.checkpoint_needed():
@@ -322,7 +323,7 @@ class AutobatchTrainingRegimen(SimpleTrainingRegimen):
           total_loss_val = total_loss.get_factored_loss_val(comb_method=self.loss_comb_method)
           reported_trg = batchers.ListBatch(total_trg)
           self.train_loss_tracker.report(reported_trg, total_loss_val)
-          total_loss = losses.FactoredLossExpr()
+          total_loss = FactoredLossExpr()
           total_trg = []
           self.checkpoint_and_save(save_fct)
         if self.should_stop_training(): break
